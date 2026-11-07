@@ -23,5 +23,8 @@
     "lint": "eslint .",
     "test": "vitest run --passWithNoTests --exclude \"**/*.int.test.ts\"",
     "test:int": "vitest run --passWithNoTests int.test"
+  },
+  "devDependencies": {
+    "@cb/eslint-config": "workspace:*"
   }
 }

@@ -14,5 +14,8 @@
     "test:int": "vitest run --passWithNoTests int.test",
     "dev": "tsx watch --import ./src/instrument.ts src/index.ts",
     "start": "node --import ./dist/instrument.js dist/index.js"
+  },
+  "devDependencies": {
+    "@cb/eslint-config": "workspace:*"
   }
 }

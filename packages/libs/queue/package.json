@@ -23,5 +23,19 @@
     "lint": "eslint .",
     "test": "vitest run --passWithNoTests --exclude \"**/*.int.test.ts\"",
     "test:int": "vitest run --passWithNoTests int.test"
+  },
+  "devDependencies": {
+    "@cb/eslint-config": "workspace:*",
+    "@cb/redis": "workspace:*",
+    "@cb/testing": "workspace:*"
+  },
+  "dependencies": {
+    "@cb/db": "workspace:*",
+    "@cb/ids": "workspace:*",
+    "@cb/logger": "workspace:*",
+    "@cb/telemetry": "workspace:*",
+    "bullmq": "^6.7.2",
+    "drizzle-orm": "^0.45.4",
+    "ioredis": "^6.0.0"
   }
 }

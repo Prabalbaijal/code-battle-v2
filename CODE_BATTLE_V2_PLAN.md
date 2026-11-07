@@ -32,11 +32,13 @@
 ## 1. Context and goals
 
 **Product:** Code Battle is a real-time 1v1 competitive coding game.
+
 - You challenge an online user, and both players get the same unseen problem.
 - The **first to get an accepted solution wins** coins. A 30-minute timer runs.
 - The game also has friends, a leaderboard, profiles with match history, and an admin page for adding problems.
 
 **Goals of v2**
+
 - Same core functionality, rebuilt with **production-grade system design**: microservices, event-driven architecture, idempotency, race-condition safety, horizontal scalability, observability.
 - **TypeScript everywhere**, in a **Turborepo monorepo** (layout inspired by the owner's Redingle `aa-services` repo, with differences explained in §7).
 - **Interview-ready depth.** Every component has a clear "why", trade-offs, and failure handling (§27).
@@ -44,6 +46,7 @@
 - **₹0 hosting** for test and demo (§23).
 
 **Non-goals (for now)**
+
 - Self-hosting a judge or sandbox.
 - Kubernetes in the live demo (manifests are optional and for showcase only).
 - Native mobile apps.
@@ -53,22 +56,23 @@
 
 ## 2. Current system snapshot (v1)
 
-| Area | v1 implementation |
-|---|---|
-| Frontend | React 18 + Vite SPA (`Client/`), Redux Toolkit + redux-persist, react-router v6, Tailwind, Monaco and CodeMirror (both installed), socket.io-client, recharts, react-hot-toast. Deployed on Vercel. |
-| Backend | One Express server (`Server/index.js`), Mongoose/MongoDB, Socket.IO with `@socket.io/redis-adapter` (ioredis), JWT in a cookie (1 day), bcryptjs, multer (disk) + Cloudinary for avatars, SendGrid/nodemailer for email. Deployed on Render. |
-| Code execution | Judge0 CE via RapidAPI. The server loops over test cases one at a time, POSTs each, then polls every 2 s (`Server/controllers/QuestionControllers.js`). |
-| Timers | Redis key with TTL `contest:<roomName>` + keyspace notifications (`__keyevent@0__:expired`). |
-| Models | `User` (fullname, username, email, password, avatar, coins=400, level=1, isAdmin, isVerified, reset and verification tokens), `Contest` (roomName, user1, user2 as usernames, status, winner, startTime, endTime, problemId), `Question` (title, description, difficulty, inputFormat, outputFormat, examples, constraints, testCases, executionTimes per language_id), `Friend` (requester, recipient, status). |
-| Languages | JavaScript (Judge0 id 63), Python (71), C++ (52), Java (62). The IDs are hard-coded in the client in `Problem.jsx#getLanguageId`. |
+| Area           | v1 implementation                                                                                                                                                                                                                                                                                                                                                                                                |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Frontend       | React 18 + Vite SPA (`Client/`), Redux Toolkit + redux-persist, react-router v6, Tailwind, Monaco and CodeMirror (both installed), socket.io-client, recharts, react-hot-toast. Deployed on Vercel.                                                                                                                                                                                                              |
+| Backend        | One Express server (`Server/index.js`), Mongoose/MongoDB, Socket.IO with `@socket.io/redis-adapter` (ioredis), JWT in a cookie (1 day), bcryptjs, multer (disk) + Cloudinary for avatars, SendGrid/nodemailer for email. Deployed on Render.                                                                                                                                                                     |
+| Code execution | Judge0 CE via RapidAPI. The server loops over test cases one at a time, POSTs each, then polls every 2 s (`Server/controllers/QuestionControllers.js`).                                                                                                                                                                                                                                                          |
+| Timers         | Redis key with TTL `contest:<roomName>` + keyspace notifications (`__keyevent@0__:expired`).                                                                                                                                                                                                                                                                                                                     |
+| Models         | `User` (fullname, username, email, password, avatar, coins=400, level=1, isAdmin, isVerified, reset and verification tokens), `Contest` (roomName, user1, user2 as usernames, status, winner, startTime, endTime, problemId), `Question` (title, description, difficulty, inputFormat, outputFormat, examples, constraints, testCases, executionTimes per language_id), `Friend` (requester, recipient, status). |
+| Languages      | JavaScript (Judge0 id 63), Python (71), C++ (52), Java (62). The IDs are hard-coded in the client in `Problem.jsx#getLanguageId`.                                                                                                                                                                                                                                                                                |
 
 ### v1 socket events (all business logic currently lives in socket handlers)
 
-| Client → server | Server → client |
-|---|---|
+| Client → server                                                                                                                              | Server → client                                                                                                                                                                                       |
+| -------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `playRequest`, `challengeRejected`, `cancelChallenge`, `roomCreationStarted`, `joinRoom`, `reconnectContest`, `solveProblem`, `leaveContest` | `playNotification`, `requestSent`, `opponentOffline`, `challengeRejected`, `challengeCancelled`, `roomCreating`, `startContest`, `reconnectContest`, `contestEnded`, `contestError`, `getOnlineUsers` |
 
 ### v1 REST routes
+
 - **Auth:** `/api/auth/register` (multipart, avatar required), `/login`, `/logout`, `/getUser`, `/forgot-password`, `/reset-password/:token`, `/verify/:token`
 - **Users:** `/api/users/updateprofile` (GET profile + match history), `/search`, `/leaderboard`
 - **Friends:** `/api/friends/getfriendrequests`, `/sendfriendrequest`, `/handleRequest`, `/getfriends`, `/remove`
@@ -76,6 +80,7 @@
 - **Contests:** `/api/contest/activecontests`
 
 ### v1 frontend components
+
 HomePage (+TypingEffect), Login/Register, EmailVerification, ForgotPassword/ResetPassword, MainSection, Matching/Match (lobby: online friends + other online users), Friends, FriendRequest, LeaderBoard (with online dots), Profile (ProfileHeader, Stats, PerformanceGraph, ContestHistory), Problem (ProblemDescription, CodeEditor, LanguageSelector, Navbar, Timer), ActiveContests, NotificationPanel, AddQuestion (admin), MultitabAlert, ProtectedRoutes (adminOnly).
 
 ---
@@ -114,32 +119,32 @@ Mark these off in Phase 5 and Phase 8. "Δ" marks an intended behaviour change.
 
 Use these as the "before" story in interviews.
 
-| # | Issue | Location | Class | v2 fix |
-|---|---|---|---|---|
-| 1 | **The client decides the winner.** The client calls `/submit`, then emits `solveProblem` with a `userName` taken from its own payload. Any client can emit it and win. `leaveContest` also trusts `userName`, so you can make your opponent forfeit. | `socket.js` `solveProblem`/`leaveContest`; `Problem.jsx` | Security / integrity | The server decides the winner from judge verdicts (§11.3). Identity comes from the token. |
-| 2 | **Hidden test cases are sent to the client**, and the client sends them back to `/submit`, along with the time limits. Players can fake tests and limits. | `getQuestion` returns the full doc; `Problem.jsx` submits `testCases`, `executionTimes` | Security | Tests never leave the server. Limits are read from the DB (§14). |
-| 3 | `joinRoom` accepts any `roomName`. Any socket can force a match between two online users. The accept step is never validated server-side. | `socket.js` `joinRoom` | AuthZ | Challenge state machine in the DB (§11.1). |
-| 4 | Check-then-insert race (TOCTOU) when starting a contest, with no unique index. Two contests can be created, and A→B and B→A can both be accepted. | `joinRoom` | Race | `user_active_match` PK + conditional updates (§12). |
-| 5 | `user1.save({session})` / `user2.save` are not awaited inside a transaction. | `UserUpdate.js#updateUserDataOnNoWinner` | Correctness | Atomic SQL + ledger. |
-| 6 | Coins are updated by read-modify-write (`findOne` → `+=` → `save`), so concurrent updates are lost. | `UserUpdate.js` | Race | `UPDATE … SET coins = GREATEST(coins + $d, 0)` + idempotent ledger. |
-| 7 | `contestEnded` is emitted **before** `commitTransaction`. If the commit fails, the users have already been told the wrong result. | `solveProblem`, `leaveContest` | Consistency | Notify only after commit, via outbox → Kafka. |
-| 8 | Timers rely on Redis keyspace notifications. They are fire-and-forget, can arrive late, are lost if no subscriber is connected, and **every instance receives each event**, so expiry is processed more than once. | `socket.js` psubscribe | Reliability | BullMQ delayed job with `jobId` + a Postgres reconciler (§11.4). |
-| 9 | `rescheduleAllTimeouts()` is called without the Redis client, so it silently fails on every restart. | `index.js` | Bug | Removed; covered by the reconciler. |
-| 10 | `io.sockets.sockets.get(id)` only finds sockets on the local node. It breaks when scaled out. | `joinRoom` | Scalability | Per-node delivery to `user:{id}` rooms (§13). |
-| 11 | `user:sockets` maps a username to **one** socket. A second tab overwrites the first, closing one tab marks the user offline, and a server crash leaves ghost users online. Any disconnect also removes the user from `contest:users` even though the match is still active. | `socket.js` | Correctness | Presence keyed per connection with a TTL (§13.3). |
-| 12 | `updateOnlineUsers` broadcasts **every user's** status to **every user** on each connect/disconnect, with an N+1 `sismember` loop. | `socket.js` | O(N²) | Push updates only to friends; lobby list is paginated (§13.3). |
-| 13 | `getQuestion` loads all past contests of both users into memory, then does `$nin` + `$sample`. | `QuestionControllers.js` | Performance | `user_problem_seen` + `NOT EXISTS` + `random_key` (§9.3). |
-| 14 | Leaderboard sorts by `coins` with no index. Rank uses `countDocuments`, which is O(N). | `UserControllers.js` | Performance | Redis ZSET + indexed fallback (§15). |
-| 15 | Search uses an unanchored `$regex` with option `i`, which scans the whole collection. | `searchUsers` | Performance | `pg_trgm` / prefix index. |
-| 16 | IDOR: `activecontests` takes `username` from the body. `sendrequest` and `handleFriendRequest` take `senderUsername`/`receiverUsername` from the body, so anyone can send or accept requests as another user. | Controllers | Security | The acting user always comes from the token. |
-| 17 | `add-question` only checks that the user is logged in, not that they are an admin. | `QuestionRoutes.js` | AuthZ | RBAC (§16). |
-| 18 | JWT lasts 1 day with no refresh or revocation. Socket auth queries the DB on every connect. Body limit is 50 MB. | `AuthControllers`, `index.js` | Security / perf | Access + refresh tokens, JWKS, small body limits. |
-| 19 | Judge loop is sequential per test with 2 s polling. TLE is only checked for test index 1. "In Queue" (status 1) is treated as final. Exact string compare of output. A null `time` becomes 0. | `submitQuestion` | Correctness / perf | Batched, staged, checker-based judging (§14). |
-| 20 | Contests store usernames instead of IDs. `roomName = "a-b"` is split on `-`, which breaks for usernames containing `-`. | `ContestModel`, `socket.js` | Data integrity | UUID IDs everywhere. |
-| 21 | Profile shows a score of 0 for a "draw" (timeout), but coins were actually −50 for both. | `getUserProfile` | Bug | History reads deltas from the coin ledger. |
-| 22 | multer stores uploads by `file.originalname` (files can overwrite each other, no type or size checks), and the files stay on local disk. | `middlewares/multer.js` | Security | Signed direct upload to Cloudinary/R2. |
-| 23 | No friendship uniqueness constraint. A→B and B→A requests can both exist. | `friendRequest.js` | Race | Canonical pair PK (§9.2). |
-| 24 | Hard-coded CORS origins, `console.log` used as logging, no tests. | Everywhere | Ops | Env config, pino, test pyramid. |
+| #   | Issue                                                                                                                                                                                                                                                                       | Location                                                                                | Class                | v2 fix                                                                                    |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- | -------------------- | ----------------------------------------------------------------------------------------- |
+| 1   | **The client decides the winner.** The client calls `/submit`, then emits `solveProblem` with a `userName` taken from its own payload. Any client can emit it and win. `leaveContest` also trusts `userName`, so you can make your opponent forfeit.                        | `socket.js` `solveProblem`/`leaveContest`; `Problem.jsx`                                | Security / integrity | The server decides the winner from judge verdicts (§11.3). Identity comes from the token. |
+| 2   | **Hidden test cases are sent to the client**, and the client sends them back to `/submit`, along with the time limits. Players can fake tests and limits.                                                                                                                   | `getQuestion` returns the full doc; `Problem.jsx` submits `testCases`, `executionTimes` | Security             | Tests never leave the server. Limits are read from the DB (§14).                          |
+| 3   | `joinRoom` accepts any `roomName`. Any socket can force a match between two online users. The accept step is never validated server-side.                                                                                                                                   | `socket.js` `joinRoom`                                                                  | AuthZ                | Challenge state machine in the DB (§11.1).                                                |
+| 4   | Check-then-insert race (TOCTOU) when starting a contest, with no unique index. Two contests can be created, and A→B and B→A can both be accepted.                                                                                                                           | `joinRoom`                                                                              | Race                 | `user_active_match` PK + conditional updates (§12).                                       |
+| 5   | `user1.save({session})` / `user2.save` are not awaited inside a transaction.                                                                                                                                                                                                | `UserUpdate.js#updateUserDataOnNoWinner`                                                | Correctness          | Atomic SQL + ledger.                                                                      |
+| 6   | Coins are updated by read-modify-write (`findOne` → `+=` → `save`), so concurrent updates are lost.                                                                                                                                                                         | `UserUpdate.js`                                                                         | Race                 | `UPDATE … SET coins = GREATEST(coins + $d, 0)` + idempotent ledger.                       |
+| 7   | `contestEnded` is emitted **before** `commitTransaction`. If the commit fails, the users have already been told the wrong result.                                                                                                                                           | `solveProblem`, `leaveContest`                                                          | Consistency          | Notify only after commit, via outbox → Kafka.                                             |
+| 8   | Timers rely on Redis keyspace notifications. They are fire-and-forget, can arrive late, are lost if no subscriber is connected, and **every instance receives each event**, so expiry is processed more than once.                                                          | `socket.js` psubscribe                                                                  | Reliability          | BullMQ delayed job with `jobId` + a Postgres reconciler (§11.4).                          |
+| 9   | `rescheduleAllTimeouts()` is called without the Redis client, so it silently fails on every restart.                                                                                                                                                                        | `index.js`                                                                              | Bug                  | Removed; covered by the reconciler.                                                       |
+| 10  | `io.sockets.sockets.get(id)` only finds sockets on the local node. It breaks when scaled out.                                                                                                                                                                               | `joinRoom`                                                                              | Scalability          | Per-node delivery to `user:{id}` rooms (§13).                                             |
+| 11  | `user:sockets` maps a username to **one** socket. A second tab overwrites the first, closing one tab marks the user offline, and a server crash leaves ghost users online. Any disconnect also removes the user from `contest:users` even though the match is still active. | `socket.js`                                                                             | Correctness          | Presence keyed per connection with a TTL (§13.3).                                         |
+| 12  | `updateOnlineUsers` broadcasts **every user's** status to **every user** on each connect/disconnect, with an N+1 `sismember` loop.                                                                                                                                          | `socket.js`                                                                             | O(N²)                | Push updates only to friends; lobby list is paginated (§13.3).                            |
+| 13  | `getQuestion` loads all past contests of both users into memory, then does `$nin` + `$sample`.                                                                                                                                                                              | `QuestionControllers.js`                                                                | Performance          | `user_problem_seen` + `NOT EXISTS` + `random_key` (§9.3).                                 |
+| 14  | Leaderboard sorts by `coins` with no index. Rank uses `countDocuments`, which is O(N).                                                                                                                                                                                      | `UserControllers.js`                                                                    | Performance          | Redis ZSET + indexed fallback (§15).                                                      |
+| 15  | Search uses an unanchored `$regex` with option `i`, which scans the whole collection.                                                                                                                                                                                       | `searchUsers`                                                                           | Performance          | `pg_trgm` / prefix index.                                                                 |
+| 16  | IDOR: `activecontests` takes `username` from the body. `sendrequest` and `handleFriendRequest` take `senderUsername`/`receiverUsername` from the body, so anyone can send or accept requests as another user.                                                               | Controllers                                                                             | Security             | The acting user always comes from the token.                                              |
+| 17  | `add-question` only checks that the user is logged in, not that they are an admin.                                                                                                                                                                                          | `QuestionRoutes.js`                                                                     | AuthZ                | RBAC (§16).                                                                               |
+| 18  | JWT lasts 1 day with no refresh or revocation. Socket auth queries the DB on every connect. Body limit is 50 MB.                                                                                                                                                            | `AuthControllers`, `index.js`                                                           | Security / perf      | Access + refresh tokens, JWKS, small body limits.                                         |
+| 19  | Judge loop is sequential per test with 2 s polling. TLE is only checked for test index 1. "In Queue" (status 1) is treated as final. Exact string compare of output. A null `time` becomes 0.                                                                               | `submitQuestion`                                                                        | Correctness / perf   | Batched, staged, checker-based judging (§14).                                             |
+| 20  | Contests store usernames instead of IDs. `roomName = "a-b"` is split on `-`, which breaks for usernames containing `-`.                                                                                                                                                     | `ContestModel`, `socket.js`                                                             | Data integrity       | UUID IDs everywhere.                                                                      |
+| 21  | Profile shows a score of 0 for a "draw" (timeout), but coins were actually −50 for both.                                                                                                                                                                                    | `getUserProfile`                                                                        | Bug                  | History reads deltas from the coin ledger.                                                |
+| 22  | multer stores uploads by `file.originalname` (files can overwrite each other, no type or size checks), and the files stay on local disk.                                                                                                                                    | `middlewares/multer.js`                                                                 | Security             | Signed direct upload to Cloudinary/R2.                                                    |
+| 23  | No friendship uniqueness constraint. A→B and B→A requests can both exist.                                                                                                                                                                                                   | `friendRequest.js`                                                                      | Race                 | Canonical pair PK (§9.2).                                                                 |
+| 24  | Hard-coded CORS origins, `console.log` used as logging, no tests.                                                                                                                                                                                                           | Everywhere                                                                              | Ops                  | Env config, pino, test pyramid.                                                           |
 
 ---
 
@@ -167,6 +172,7 @@ OpenTelemetry → Grafana Cloud (free) · Sentry (free)
 ```
 
 ### 5.1 Architecture principles (non-negotiable)
+
 1. **Commands go over REST; WebSocket is push-only.** Challenge, accept, forfeit and submit are REST calls with idempotency keys, rate limits and standard error codes. Socket nodes only authenticate, track presence and deliver events. All the v1 bugs came from business logic living inside socket handlers.
 2. **The server is authoritative.** The client never decides outcomes, time, or limits.
 3. **The database is the source of truth.** Redis is only for speed. Invariants are enforced with constraints and compare-and-set updates.
@@ -176,7 +182,9 @@ OpenTelemetry → Grafana Cloud (free) · Sentry (free)
 7. **Degrade gracefully.** Losing Redis, Kafka, Judge0 or the AI provider degrades features but never corrupts data (§18).
 
 ### 5.2 Why microservices (prepared answer)
+
 The real driver is **different scaling profiles**:
+
 - Judge orchestration is I/O-bound, spiky, and limited by quota.
 - Realtime nodes hold many connections.
 - CRUD services are light.
@@ -190,31 +198,31 @@ The honest caveat for a 1–2 person team: a modular monolith with the same boun
 
 ## 6. Tech stack (final)
 
-| Concern | Choice | Reason |
-|---|---|---|
-| Language | TypeScript 5.x `strict`, Node 22 LTS, ESM | — |
-| Monorepo | **Turborepo + pnpm workspaces** | Strict dependency isolation; `turbo prune` produces slim Docker images. (Redingle uses Yarn 1; we deliberately use pnpm.) |
-| HTTP | **Fastify** (+ `fastify-type-provider-zod`) | Fast, schema-first, plugin encapsulation |
-| Validation and contracts | **zod**, shared in `packages/contracts` | One schema for front end, back end, events and sockets |
-| DB | **PostgreSQL 16**, one logical DB per service | ACID, partial unique indexes, `FOR UPDATE SKIP LOCKED`, `pg_trgm`, `pgvector` |
-| ORM / migrations | **Drizzle ORM + drizzle-kit** | Close to SQL, typed; partial indexes, `RETURNING` and row locks are explicit |
-| IDs | **UUIDv7** (`uuidv7` npm) | Time-ordered: good B-tree locality and natural cursors |
-| Event bus | **Kafka API via Redpanda** (self-hosted on the VM). Aiven free Kafka is the fallback. | Fan-out, replay, ordering per key |
-| Kafka client | `kafkajs` (or `@confluentinc/kafka-javascript`), wrapped in `packages/libs/events` | — |
-| Job queue | **BullMQ** | Delays, retries/backoff, priorities, rate limiter, dedupe by `jobId` |
-| Cache / presence / leaderboard | **Redis 7** (ioredis) | — |
-| Realtime | **Socket.IO 4** (WebSocket transport only) | — |
-| Code execution | **Hosted Judge0 API** behind a `CodeExecutor` interface | Owner will not self-host a compiler (§14) |
-| Auth | **Argon2id** (`@node-rs/argon2`), **EdDSA JWT** (`jose`), rotating opaque refresh tokens | — |
-| Email | `EmailProvider` interface: Resend or Brevo free tier (verify current limits); SendGrid adapter kept | — |
-| Files | Cloudinary (existing) through a `StorageProvider` interface, with signed direct uploads. Cloudflare R2 for test files and code blobs. | — |
-| Frontend | **Next.js (App Router) + React + TS**, TanStack Query, Zustand, Tailwind + **shadcn/ui (Radix)**, **CodeMirror 6** editor, Framer Motion, Recharts | §21 |
-| AI | **LangChain.js + LangGraph.js** in `ai-service`. Anthropic Claude (`claude-haiku-5-5` for cheap/high-volume calls, `claude-sonnet-5-5` for reasoning-heavy work). Local embeddings via **transformers.js** (free). **pgvector**. | §22 |
-| Logging | pino (JSON), with request-id and trace-id fields | — |
-| Tracing / metrics | OpenTelemetry SDK → OTel Collector → Grafana Cloud free; Prometheus metrics; Sentry | — |
-| Testing | Vitest, Testcontainers (Postgres, Redis, Redpanda), Playwright, k6 (HTTP + WebSocket), `apps/fake-judge0` | — |
-| Lint / format | ESLint (flat config, `typescript-eslint`, `eslint-plugin-boundaries`), Prettier, husky + lint-staged | — |
-| CI/CD | GitHub Actions + Turbo cache; multi-arch (arm64) images pushed to GHCR; deploy by SSH + `docker compose` | — |
+| Concern                        | Choice                                                                                                                                                                                                                           | Reason                                                                                                                    |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Language                       | TypeScript 5.x `strict`, Node 22 LTS, ESM                                                                                                                                                                                        | —                                                                                                                         |
+| Monorepo                       | **Turborepo + pnpm workspaces**                                                                                                                                                                                                  | Strict dependency isolation; `turbo prune` produces slim Docker images. (Redingle uses Yarn 1; we deliberately use pnpm.) |
+| HTTP                           | **Fastify** (+ `fastify-type-provider-zod`)                                                                                                                                                                                      | Fast, schema-first, plugin encapsulation                                                                                  |
+| Validation and contracts       | **zod**, shared in `packages/contracts`                                                                                                                                                                                          | One schema for front end, back end, events and sockets                                                                    |
+| DB                             | **PostgreSQL 16**, one logical DB per service                                                                                                                                                                                    | ACID, partial unique indexes, `FOR UPDATE SKIP LOCKED`, `pg_trgm`, `pgvector`                                             |
+| ORM / migrations               | **Drizzle ORM + drizzle-kit**                                                                                                                                                                                                    | Close to SQL, typed; partial indexes, `RETURNING` and row locks are explicit                                              |
+| IDs                            | **UUIDv7** (`uuidv7` npm)                                                                                                                                                                                                        | Time-ordered: good B-tree locality and natural cursors                                                                    |
+| Event bus                      | **Kafka API via Redpanda** (self-hosted on the VM). Aiven free Kafka is the fallback.                                                                                                                                            | Fan-out, replay, ordering per key                                                                                         |
+| Kafka client                   | `kafkajs` (or `@confluentinc/kafka-javascript`), wrapped in `packages/libs/events`                                                                                                                                               | —                                                                                                                         |
+| Job queue                      | **BullMQ**                                                                                                                                                                                                                       | Delays, retries/backoff, priorities, rate limiter, dedupe by `jobId`                                                      |
+| Cache / presence / leaderboard | **Redis 7** (ioredis)                                                                                                                                                                                                            | —                                                                                                                         |
+| Realtime                       | **Socket.IO 4** (WebSocket transport only)                                                                                                                                                                                       | —                                                                                                                         |
+| Code execution                 | **Hosted Judge0 API** behind a `CodeExecutor` interface                                                                                                                                                                          | Owner will not self-host a compiler (§14)                                                                                 |
+| Auth                           | **Argon2id** (`@node-rs/argon2`), **EdDSA JWT** (`jose`), rotating opaque refresh tokens                                                                                                                                         | —                                                                                                                         |
+| Email                          | `EmailProvider` interface: Resend or Brevo free tier (verify current limits); SendGrid adapter kept                                                                                                                              | —                                                                                                                         |
+| Files                          | Cloudinary (existing) through a `StorageProvider` interface, with signed direct uploads. Cloudflare R2 for test files and code blobs.                                                                                            | —                                                                                                                         |
+| Frontend                       | **Next.js (App Router) + React + TS**, TanStack Query, Zustand, Tailwind + **shadcn/ui (Radix)**, **CodeMirror 6** editor, Framer Motion, Recharts                                                                               | §21                                                                                                                       |
+| AI                             | **LangChain.js + LangGraph.js** in `ai-service`. Anthropic Claude (`claude-haiku-5-5` for cheap/high-volume calls, `claude-sonnet-5-5` for reasoning-heavy work). Local embeddings via **transformers.js** (free). **pgvector**. | §22                                                                                                                       |
+| Logging                        | pino (JSON), with request-id and trace-id fields                                                                                                                                                                                 | —                                                                                                                         |
+| Tracing / metrics              | OpenTelemetry SDK → OTel Collector → Grafana Cloud free; Prometheus metrics; Sentry                                                                                                                                              | —                                                                                                                         |
+| Testing                        | Vitest, Testcontainers (Postgres, Redis, Redpanda), Playwright, k6 (HTTP + WebSocket), `apps/fake-judge0`                                                                                                                        | —                                                                                                                         |
+| Lint / format                  | ESLint (flat config, `typescript-eslint`, `eslint-plugin-boundaries`), Prettier, husky + lint-staged                                                                                                                             | —                                                                                                                         |
+| CI/CD                          | GitHub Actions + Turbo cache; multi-arch (arm64) images pushed to GHCR; deploy by SSH + `docker compose`                                                                                                                         | —                                                                                                                         |
 
 ---
 
@@ -268,6 +276,7 @@ code-battle-v2/  (separate repo; v1 stays in the Code_Battle repo until cutover)
 ```
 
 ### 7.1 Differences from Redingle (deliberate)
+
 - Redingle shares DB models through `packages/data/*`. **We keep each service's schema and migrations private inside its app** (database-per-service). Only `contracts` (API, event and socket shapes) are shared.
 - Redingle enforces dependency direction by convention only. We **enforce it in CI with `scripts/check-deps.mjs`**, which reads each workspace's `repo.kind` and its `@cb/*` dependencies:
   - `app` → `domain`, `libs`, `contracts`, `ui` (web only). **Never** another app.
@@ -278,6 +287,7 @@ code-battle-v2/  (separate repo; v1 stays in the Code_Battle repo until cutover)
 - Packages are built to `dist/` with `tsup` (or `tsc`). Apps depend on them as `workspace:*`.
 
 ### 7.2 Layering inside a service: Controller → Service → Repository
+
 ```
 apps/battle-service/src/
   index.ts                 # composition root: build deps (manual DI), register routes, start
@@ -296,12 +306,14 @@ apps/battle-service/src/
   outbox/                  # outbox writer (used inside transactions)
   test/
 ```
+
 - **The service owns the transaction:** `db.transaction(async (tx) => { repoA.x(tx); repoB.y(tx); outbox.add(tx, evt) })`.
 - **Repositories never call other repositories or services.**
 - **Pure rules** (state machines, scoring, verdicts) live in `packages/domain/*` and are unit-tested without I/O.
 - **Errors:** throw `AppError(code, httpStatus, details)` from `libs/errors`. One Fastify error mapper turns them into `{ error: { code, message, details, requestId } }`. Error codes are listed in `contracts/errors.ts`, e.g. `CHALLENGE_NOT_PENDING`, `USER_IN_ACTIVE_MATCH`, `OPPONENT_OFFLINE`, `JUDGE_AT_CAPACITY`, `RATE_LIMITED`, `IDEMPOTENCY_KEY_REUSED`.
 
 ### 7.3 API conventions
+
 - Base path `/api/v1`. JSON only. Request body limit **100 KB** (code submissions **64 KB**).
 - Mutations accept an **`Idempotency-Key`** header (UUID). Required on: register, challenge create/accept/reject/cancel, forfeit, submission create, friend request create, hint purchase.
 - Pagination is cursor-based (`?cursor=&limit=`), returning `{ items, nextCursor }`.
@@ -315,6 +327,7 @@ apps/battle-service/src/
 Each service has its own Postgres database, and an `outbox` and `processed_events` table (§10.3).
 
 ### 8.1 gateway
+
 - **Does:** verifies access JWTs locally via the identity JWKS (cached), applies the RBAC route table, rate limiting (§17.2), request-id, CORS from env, proxying (`@fastify/http-proxy`), and BFF aggregation.
 - **BFF endpoints:**
   - `GET /api/v1/bff/profile/:username` → calls user, rating and battle in parallel, each with a 300 ms timeout, and returns partial data on failure.
@@ -322,6 +335,7 @@ Each service has its own Postgres database, and an `outbox` and `processed_event
 - Forwards `x-user-id`, `x-user-role` and `traceparent` headers to services. Services also verify the JWT themselves (defence in depth, cheap with JWKS).
 
 ### 8.2 identity-service
+
 - **Owns:** credentials (email, **username**, password hash, role, verification state), refresh tokens, one-time tokens, socket tickets.
 - **Owns username uniqueness as well.** Registration must enforce both unique email and unique username atomically, which can't be done across two services' DBs. Usernames are **immutable** in v2. user-service keeps a replica.
 - **API:**
@@ -334,6 +348,7 @@ Each service has its own Postgres database, and an `outbox` and `processed_event
 - **Commands out (BullMQ):** `email-send` jobs for verification and reset emails, through a job outbox. Tokens are **not** put on Kafka, because Kafka retains messages.
 
 ### 8.3 user-service
+
 - **Owns:** profiles (replica of username, plus fullname, avatar, bio), friendships.
 - **API:**
   - `GET /users/:username`, `GET /users/search?q=&cursor=`, `PATCH /users/me`
@@ -344,6 +359,7 @@ Each service has its own Postgres database, and an `outbox` and `processed_event
 - **Events out:** `user.friendship.changed.v1`, `user.profile.updated.v1`.
 
 ### 8.4 battle-service (the core)
+
 - **Owns:** challenges, matches, participants, the active-match lock, and a submission read model.
 - **API:**
   - `POST /challenges {toUserId}`, `POST /challenges/:id/accept`, `POST /challenges/:id/reject`, `POST /challenges/:id/cancel`, `GET /challenges?status=pending`
@@ -355,6 +371,7 @@ Each service has its own Postgres database, and an `outbox` and `processed_event
 - **Calls (sync):** problem-service `POST /internal/selections`; judge-service `GET /internal/capacity` for admission control.
 
 ### 8.5 problem-service
+
 - **Owns:** problems, test files (metadata; blobs in R2), language limits, reference solutions, calibration runs, the per-user "seen" set, per-match problem selection, and problem embeddings (AI).
 - **API:**
   - `GET /problems/:slug` (public view: statement, examples, limits; **never hidden tests**)
@@ -365,6 +382,7 @@ Each service has its own Postgres database, and an `outbox` and `processed_event
 - **Events out:** `problem.published.v1`, `problem.updated.v1`.
 
 ### 8.6 judge-service
+
 - **Owns:** submissions, Judge0 runs, verdict cache, the daily Judge0 budget, and language profiles.
 - **API:**
   - `POST /submissions {mode:'submit'|'run', problemId, matchId?, languageId, code, customInput?}` → **202** `{submissionId}`
@@ -375,6 +393,7 @@ Each service has its own Postgres database, and an `outbox` and `processed_event
 - **Jobs:** `judge-submit`, `judge-run` (low priority), `judge-poll`, `judge-drift-check` (weekly, repeatable).
 
 ### 8.7 rating-service
+
 - **Owns:** player stats (coins, level, wins/losses/draws, streak; rating later), coin ledger, rating history, and the leaderboard ZSET.
 - **API:** `GET /leaderboard?scope=global|friends&limit=50`, `GET /leaderboard/me`, `GET /stats/:userId`, `GET /stats/:userId/history?cursor=`
 - **Consumes:** `identity.user.registered.v1` (creates stats with 400 coins, level 1), `battle.match.completed.v1`, `identity.user.role_changed.v1` (admins are excluded from the leaderboard).
@@ -382,17 +401,20 @@ Each service has its own Postgres database, and an `outbox` and `processed_event
 - **Jobs:** `leaderboard-rebuild`.
 
 ### 8.8 notification-service
+
 - **Owns:** in-app notifications and the email log.
 - **API:** `GET /notifications?cursor=`, `POST /notifications/:id/read`, `POST /notifications/read-all`, `GET /notifications/unread-count`
 - **Consumes:** friendship and challenge events (creates in-app notifications), `battle.match.completed.v1`.
 - **Jobs:** `email-send`. Templates: verify-email, reset-password. Deduplicated by `dedupeKey`.
 
 ### 8.9 realtime
+
 - **Owns:** WebSocket connections and presence (Redis only).
 - **HTTP:** `GET /presence/online?cursor=&limit=20` (lobby list of "other online users"), `GET /presence/online/search?prefix=`, `GET /presence/online/count`, `POST /presence/query {userIds≤100}` (online dots on the leaderboard and friends list)
 - **Consumes:** all topics, with **one consumer group per node** (§13.4).
 
 ### 8.10 ai-service
+
 See §22.
 
 ---
@@ -402,6 +424,7 @@ See §22.
 All tables use `uuid` primary keys (UUIDv7, generated in the app) and `timestamptz` times. Every service DB also has the tables in §10.3.
 
 ### 9.1 identity_db
+
 ```sql
 CREATE EXTENSION IF NOT EXISTS citext;
 
@@ -450,6 +473,7 @@ CREATE TABLE one_time_tokens (
 ```
 
 ### 9.2 user_db
+
 ```sql
 CREATE EXTENSION IF NOT EXISTS citext;
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
@@ -480,11 +504,13 @@ CREATE TABLE friendships (
 CREATE INDEX ON friendships (user_high, status);
 CREATE INDEX ON friendships (user_low, status);
 ```
+
 - **Send request:** `INSERT … ON CONFLICT (user_low,user_high) DO UPDATE SET status='pending', requested_by=$me, updated_at=now() WHERE friendships.status='ignored' RETURNING *`. No row returned means it is already pending or accepted → `409`.
 - **Accept:** `UPDATE … SET status='accepted' WHERE (pair) AND status='pending' AND requested_by <> $me RETURNING *`.
 - **Remove:** `DELETE WHERE (pair) AND status='accepted'`.
 
 ### 9.3 problem_db
+
 ```sql
 CREATE TABLE problems (
   id              uuid PRIMARY KEY,
@@ -567,7 +593,9 @@ CREATE TABLE match_problem (                  -- idempotent selection per match
   created_at timestamptz NOT NULL DEFAULT now()
 );
 ```
+
 **Selection query** (inside `POST /internal/selections`; on retry it returns the existing `match_problem` row):
+
 ```sql
 WITH r AS (SELECT random() AS k)
 SELECT p.id FROM problems p, r
@@ -577,9 +605,11 @@ WHERE p.status = 'published' AND p.random_key >= r.k
 ORDER BY p.random_key LIMIT 1;
 -- if no row: repeat with p.random_key < r.k (wrap-around). If still none ⇒ 409 NO_UNSEEN_PROBLEM.
 ```
+
 Mark the problem as seen for both users **in the same transaction** as inserting `match_problem`, using `ON CONFLICT DO NOTHING`. Consuming `battle.match.started.v1` repeats this idempotently as a safety net.
 
 ### 9.4 battle_db
+
 ```sql
 CREATE TABLE challenges (
   id         uuid PRIMARY KEY,
@@ -636,6 +666,7 @@ CREATE INDEX ON match_submissions (match_id, submitted_at);
 ```
 
 ### 9.5 judge_db
+
 ```sql
 CREATE TABLE language_profiles (
   language_key     text PRIMARY KEY,           -- 'cpp','java','python','javascript'
@@ -705,6 +736,7 @@ CREATE TABLE judge_drift (
 ```
 
 ### 9.6 rating_db
+
 ```sql
 CREATE TABLE player_stats (
   user_id    uuid PRIMARY KEY,
@@ -734,6 +766,7 @@ CREATE INDEX ON coin_ledger (user_id, created_at DESC);
 ```
 
 ### 9.7 notification_db
+
 ```sql
 CREATE TABLE notifications (
   id uuid PRIMARY KEY, user_id uuid NOT NULL, type text NOT NULL, payload jsonb NOT NULL,
@@ -750,9 +783,11 @@ CREATE TABLE email_log (
 ```
 
 ### 9.8 ai_db
+
 See §22.6.
 
 ### 9.9 Transaction isolation policy
+
 - Default **READ COMMITTED** + **compare-and-set** updates (`WHERE status = …`) + `version` columns.
 - `SELECT … FOR UPDATE` only when a use case must read and then decide across rows (rare).
 - **SERIALIZABLE** only where an invariant spans rows and can't be expressed as a constraint. Use a retry wrapper (3 attempts, jitter) on SQLSTATE `40001` and `40P01`.
@@ -763,11 +798,12 @@ See §22.6.
 
 ### 10.1 When to use Kafka and when to use BullMQ (decided; see ADR-004)
 
-| Kafka (events: past tense, a fact, many listeners, replayable) | BullMQ (commands/jobs: imperative, one worker, needs delay, retry or priority) |
-|---|---|
+| Kafka (events: past tense, a fact, many listeners, replayable)                                                                       | BullMQ (commands/jobs: imperative, one worker, needs delay, retry or priority)                                                                                |
+| ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | user registered, friendship changed, challenge created, match started/completed, submission judged, problem published, stats changed | judge a submission, poll Judge0, fire a match timeout, expire a challenge, send an email, generate an AI review, calibrate a problem, rebuild the leaderboard |
 
 Kafka is not used for jobs:
+
 - It has no delayed delivery.
 - A slow message blocks its partition (head-of-line blocking), and acks can't happen out of order.
 - Retries need extra topics.
@@ -775,31 +811,34 @@ Kafka is not used for jobs:
 - Parallelism is capped by the partition count.
 
 ### 10.2 Kafka topics and events
+
 **Budget: 5 topics, 2 partitions each.** This keeps us compatible with the Aiven free tier as a fallback. Redpanda on the VM has no such limit, but we stay within it anyway. Dead letters go to a Postgres table, not a Kafka topic.
 
-| Topic | Key | Events (type names) |
-|---|---|---|
-| `user.events` | userId (friendship: `user_low`) | `identity.user.registered.v1`, `identity.user.verified.v1`, `identity.user.role_changed.v1`, `user.friendship.changed.v1`, `user.profile.updated.v1` |
-| `problem.events` | problemId | `problem.published.v1`, `problem.updated.v1` |
-| `battle.events` | matchId (challenges: challengeId) | `battle.challenge.created.v1`, `battle.challenge.accepted.v1`, `battle.challenge.rejected.v1`, `battle.challenge.cancelled.v1`, `battle.challenge.expired.v1`, `battle.match.started.v1`, `battle.match.deciding.v1`, `battle.match.completed.v1`, `battle.match.aborted.v1` |
-| `judge.events` | matchId, or submissionId when there is no match | `judge.submission.created.v1`, `judge.submission.progress.v1`, `judge.submission.judged.v1` |
-| `rating.events` | userId | `rating.stats.changed.v1` |
+| Topic            | Key                                             | Events (type names)                                                                                                                                                                                                                                                          |
+| ---------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `user.events`    | userId (friendship: `user_low`)                 | `identity.user.registered.v1`, `identity.user.verified.v1`, `identity.user.role_changed.v1`, `user.friendship.changed.v1`, `user.profile.updated.v1`                                                                                                                         |
+| `problem.events` | problemId                                       | `problem.published.v1`, `problem.updated.v1`                                                                                                                                                                                                                                 |
+| `battle.events`  | matchId (challenges: challengeId)               | `battle.challenge.created.v1`, `battle.challenge.accepted.v1`, `battle.challenge.rejected.v1`, `battle.challenge.cancelled.v1`, `battle.challenge.expired.v1`, `battle.match.started.v1`, `battle.match.deciding.v1`, `battle.match.completed.v1`, `battle.match.aborted.v1` |
+| `judge.events`   | matchId, or submissionId when there is no match | `judge.submission.created.v1`, `judge.submission.progress.v1`, `judge.submission.judged.v1`                                                                                                                                                                                  |
+| `rating.events`  | userId                                          | `rating.stats.changed.v1`                                                                                                                                                                                                                                                    |
 
 **Envelope** (`packages/contracts/events/envelope.ts`):
+
 ```ts
 type EventEnvelope<T> = {
-  id: string;            // uuidv7 — dedupe key for consumers
-  type: string;          // e.g. 'battle.match.completed.v1'
-  source: string;        // service name
-  occurredAt: string;    // ISO
-  aggregateId: string;   // matchId / userId / ...
+  id: string; // uuidv7 — dedupe key for consumers
+  type: string; // e.g. 'battle.match.completed.v1'
+  source: string; // service name
+  occurredAt: string; // ISO
+  aggregateId: string; // matchId / userId / ...
   recipients?: string[]; // userIds that should get a realtime push (used by realtime nodes)
-  traceparent?: string;  // W3C trace context
-  data: T;               // zod-validated per type
+  traceparent?: string; // W3C trace context
+  data: T; // zod-validated per type
 };
 ```
 
 **Key payloads:**
+
 - `battle.match.started.v1`: `{ matchId, participants:[userId,userId], problemId, startedAt, endsAt }`
 - `battle.match.completed.v1`: `{ matchId, participants, winnerId|null, endReason:'solved'|'forfeit'|'timeout', problemId, startedAt, endedAt }`
 - `battle.match.aborted.v1`: `{ matchId, participants, reason }` (no coin changes)
@@ -810,6 +849,7 @@ type EventEnvelope<T> = {
 **Schema evolution:** additive changes keep the same version. Breaking changes publish `.v2` alongside `.v1` until every consumer has migrated.
 
 ### 10.3 Outbox, inbox, dead letters, idempotency keys (in every service DB)
+
 ```sql
 CREATE TABLE outbox (
   id uuid PRIMARY KEY, topic text NOT NULL, key text NOT NULL, type text NOT NULL,
@@ -847,17 +887,23 @@ CREATE TABLE idempotency_keys (
 ```
 
 **Outbox relay** (`libs/events`):
+
 - **Immediate dispatch:** after a transaction commits, the service tries to publish its own outbox rows right away, for low latency.
 - **Sweeper:** in the worker, every 2 s, `SELECT … FROM outbox WHERE published_at IS NULL ORDER BY created_at LIMIT 100 FOR UPDATE SKIP LOCKED` → produce to Kafka (`acks=all`, idempotent producer) → `UPDATE published_at`.
 - Ordering per aggregate is preserved by the Kafka key. The sweeper processes rows in `created_at` order.
 - The job outbox works the same way, enqueuing to BullMQ with `jobId` = `job_outbox.job_id`, so duplicates are no-ops.
 
 **Consumer pattern:**
+
 ```ts
 await db.transaction(async (tx) => {
-  const inserted = await tx.insert(processedEvents).values({ consumer, eventId: evt.id }).onConflictDoNothing().returning();
-  if (inserted.length === 0) return;          // duplicate delivery ⇒ no-op
-  await service.handle(tx, evt);               // effect + optional outbox rows, same tx
+  const inserted = await tx
+    .insert(processedEvents)
+    .values({ consumer, eventId: evt.id })
+    .onConflictDoNothing()
+    .returning();
+  if (inserted.length === 0) return; // duplicate delivery ⇒ no-op
+  await service.handle(tx, evt); // effect + optional outbox rows, same tx
 });
 // commit offset only after the tx commits. Failure ⇒ retry with backoff (in-process, 5 attempts),
 // then write to dead_letters and commit the offset (don't block the partition). Replay tool: scripts/replay-dlq.ts
@@ -865,20 +911,21 @@ await db.transaction(async (tx) => {
 
 ### 10.4 BullMQ queues
 
-| Queue | Owner | jobId | Delay / repeat | Retries | Notes |
-|---|---|---|---|---|---|
-| `challenge-expire` | battle | `challenge-expire:{challengeId}` | 30 s | 5, exp | CAS `pending → expired` |
-| `match-timeout` | battle | `match-timeout:{matchId}` | until `ends_at` | 5, exp | §11.4 |
-| `judge-submit` | judge | `{submissionId}` | — | 5, exp | priority 1 |
-| `judge-run` | judge | `{submissionId}` | — | 3 | priority 10 (low) |
-| `judge-poll` | judge | `poll:{runId}:{n}` | 15 s → 30 s → 60 s | — | fallback when no callback arrives |
-| `judge-drift-check` | judge | repeatable weekly | — | — | §14.8 |
-| `problem-calibrate` | problem | `calibrate:{problemId}:{version}` | — | 3 | §14.7 |
-| `email-send` | notification | `{dedupeKey}` | — | 8, exp | provider rate limiter |
-| `ai-review`, `ai-embed`, `ai-generate` | ai | business key | — | 3 | concurrency limited, budget gated |
-| `leaderboard-rebuild` | rating | `lb-rebuild` | on boot + daily | 3 | — |
+| Queue                                  | Owner        | jobId                             | Delay / repeat     | Retries | Notes                             |
+| -------------------------------------- | ------------ | --------------------------------- | ------------------ | ------- | --------------------------------- |
+| `challenge-expire`                     | battle       | `challenge-expire:{challengeId}`  | 30 s               | 5, exp  | CAS `pending → expired`           |
+| `match-timeout`                        | battle       | `match-timeout:{matchId}`         | until `ends_at`    | 5, exp  | §11.4                             |
+| `judge-submit`                         | judge        | `{submissionId}`                  | —                  | 5, exp  | priority 1                        |
+| `judge-run`                            | judge        | `{submissionId}`                  | —                  | 3       | priority 10 (low)                 |
+| `judge-poll`                           | judge        | `poll:{runId}:{n}`                | 15 s → 30 s → 60 s | —       | fallback when no callback arrives |
+| `judge-drift-check`                    | judge        | repeatable weekly                 | —                  | —       | §14.8                             |
+| `problem-calibrate`                    | problem      | `calibrate:{problemId}:{version}` | —                  | 3       | §14.7                             |
+| `email-send`                           | notification | `{dedupeKey}`                     | —                  | 8, exp  | provider rate limiter             |
+| `ai-review`, `ai-embed`, `ai-generate` | ai           | business key                      | —                  | 3       | concurrency limited, budget gated |
+| `leaderboard-rebuild`                  | rating       | `lb-rebuild`                      | on boot + daily    | 3       | —                                 |
 
 Rules:
+
 - Queue names use hyphens, not colons.
 - **The Redis instance used by BullMQ must have `maxmemory-policy noeviction`.**
 - Workers use `maxRetriesPerRequest: null`.
@@ -890,6 +937,7 @@ Rules:
 ## 11. Core flows
 
 ### 11.1 Challenge
+
 **Challenge state machine (`packages/domain/match-rules`):**
 `pending → accepted | rejected | cancelled | expired`. All four are terminal.
 
@@ -906,6 +954,7 @@ Rules:
 3. **Accept:** see §11.2.
 
 ### 11.2 Match start saga (inside battle-service)
+
 1. **Transaction A:**
    - `UPDATE challenges SET status='accepted', match_id=$newId WHERE id=$1 AND to_user=$me AND status='pending' AND expires_at > now() RETURNING *`.
      - 0 rows: if the challenge is already `accepted` by me, return the existing match (idempotent replay). Otherwise `409 CHALLENGE_NOT_PENDING`.
@@ -923,6 +972,7 @@ Rules:
 6. **Response** to the accepter: `200 {matchId}`. Both clients learn about the start via `match:started` and navigate to `/battle/{matchId}`.
 
 ### 11.3 Submit → judge → winner (server-authoritative, fair)
+
 1. **`POST /submissions {mode:'submit', matchId, problemId, languageKey, code}`** with an `Idempotency-Key`. Intake checks:
    - Participation is valid and the match is `in_progress`, via `battle /internal/matches/:id/participation` (cached in Redis until `ends_at`).
    - `now() < ends_at`. **Server time only.**
@@ -932,7 +982,7 @@ Rules:
    - Otherwise: insert as `queued`, add job_outbox `judge-submit` and outbox `judge.submission.created.v1`, and return `202 {submissionId}`.
 2. **Judging:** see §14. The result is `judge.submission.judged.v1` (Kafka key = matchId, so each match's events are ordered).
 3. **battle-service consumer** (inbox-deduplicated) maintains `match_submissions` from created and judged events. On a judged **AC** for an open match:
-   - **Fairness rule: the earliest *submitted* AC wins, not the earliest judged**, because judging latency varies.
+   - **Fairness rule: the earliest _submitted_ AC wins, not the earliest judged**, because judging latency varies.
    - If any other submission with `submitted_at < this.submitted_at` is still pending (`verdict IS NULL`), set `status='deciding'` and `decide_deadline = now()+10 min`, emit `battle.match.deciding.v1`, and wait for the next judged event.
    - Otherwise, the winner is the user with the earliest submitted AC. In one transaction:
      - `UPDATE matches SET status='completed', winner_id=$w, end_reason='solved', ended_at=now(), version=version+1 WHERE id=$m AND status IN ('in_progress','deciding')`. **This compare-and-set is the "first writer wins" mechanism. No distributed lock is needed.**
@@ -941,6 +991,7 @@ Rules:
 4. **rating-service** consumes `battle.match.completed.v1` (§15) and applies coins idempotently.
 
 ### 11.4 Timeout, deciding cap, and the reconciler
+
 - **`match-timeout` job at `ends_at`:**
   - If pending submissions exist with `submitted_at < ends_at`, the match goes to `deciding` (with a cap).
   - Otherwise CAS to `completed` with `winner_id = null` and `end_reason='timeout'`. Both players get −50.
@@ -951,48 +1002,54 @@ Rules:
   - handles `deciding` matches past `decide_deadline`.
 
 ### 11.5 Forfeit (replaces `leaveContest`)
+
 `POST /matches/:id/forfeit`. The acting user comes from the token. CAS `in_progress|deciding → completed`, `end_reason='forfeit'`, winner = the opponent. Then the same post-commit flow as §11.3.
 
 ### 11.6 Reconnect / rejoin (replaces `reconnectContest`)
+
 - On app load, the client calls `GET /matches/active`. If a match exists, it shows a "Rejoin match" banner, or navigates there directly.
 - `/battle/{id}` loads `GET /matches/:id/state` → `{ match, problem (public view), serverNow, endsAt, mySubmissions, opponentProgress, lastSeq }`. Then the socket delivers live events. A gap in `seq` triggers a refetch of the state.
 - Disconnecting **does not** forfeit (same as v1). An optional `DISCONNECT_FORFEIT_SECONDS` setting is off by default.
 
 ### 11.7 Registration and email verification
+
 1. `POST /auth/register` (username, fullname, email, password; the avatar is set afterwards with a signed upload).
 2. Transaction: insert credentials (unique email and username → `409 EMAIL_TAKEN` / `USERNAME_TAKEN`), insert `one_time_tokens(verify_email, 24h)`, outbox `identity.user.registered.v1`, job_outbox `email-send {template:'verify', to, link, dedupeKey:'verify:'+tokenId}`.
 3. user-service creates the profile and rating-service creates stats (400 coins, ledger `signup_bonus`), both from the event.
 4. `POST /auth/verify-email {token}` consumes the token atomically and sets `email_verified_at`. Playing (challenges and submissions) requires a verified email; the claim is `ev: true` in the JWT.
 
 ### 11.8 Password reset
+
 `POST /auth/forgot-password {email}` **always returns 200**, so accounts can't be enumerated. If the user exists, a token is created (30 min) and an email is sent. `POST /auth/reset-password` consumes the token, sets the new hash, and **revokes all refresh tokens** for that user.
 
 ### 11.9 Friend request
+
 §9.2 SQL. Events → notification-service creates an in-app notification, and realtime pushes `notification:new` and `presence:update` (when the friend set changes).
 
 ---
 
 ## 12. Concurrency, idempotency and race-condition matrix
 
-| Scenario | Mechanism | Test |
-|---|---|---|
-| Double-click accept | CAS `pending → accepted` + idempotency key returns the same match | 50 parallel accepts → exactly 1 match |
-| A→B and B→A accepted at the same moment | `user_active_match` PK conflict on the second | Parallel test → 1 match, other request gets 409 |
-| Duplicate pending challenge | Partial unique index | — |
-| Accept after expiry | `expires_at > now()` in the CAS | Fake clock |
-| Two AC verdicts processed at the same time | CAS on `matches.status` + earliest-submitted rule | Inject out-of-order judged events |
-| AC judged before an earlier-submitted pending one | `deciding` state | Scripted fake-judge0 latencies |
-| Timeout job and AC verdict race | Both use CAS; whichever commits first wins. The loser updates 0 rows and does nothing. | Parallel test |
-| Kafka redelivery of `match.completed` | Inbox + ledger `UNIQUE(match_id,user_id,reason)` | Replay the event 5× → coins change once |
-| BullMQ job retried after a partial failure | `jobId` dedupe + CAS updates + `judge_runs` token check | Kill the worker mid-job |
-| Judge0 POST retried (not idempotent on their side) | Create the `judge_runs` row **before** POST; save the token immediately; on retry, poll if a token exists | Simulated timeout after POST |
-| Friend request A→B and B→A together | Canonical pair PK + `ON CONFLICT` | Parallel test |
-| Coin floor at 0 under concurrency | `UPDATE … SET coins = GREATEST(coins + $d, 0)` in the same transaction as the ledger insert | — |
-| HTTP retry with a different body but the same key | `request_hash` mismatch → `422 IDEMPOTENCY_KEY_REUSED` | — |
-| Email sent twice | `email_log.dedupe_key` PK; check before calling the provider, record after | — |
-| Two reconciler instances | `pg_try_advisory_lock` leader election | Run 2 workers |
+| Scenario                                           | Mechanism                                                                                                 | Test                                            |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| Double-click accept                                | CAS `pending → accepted` + idempotency key returns the same match                                         | 50 parallel accepts → exactly 1 match           |
+| A→B and B→A accepted at the same moment            | `user_active_match` PK conflict on the second                                                             | Parallel test → 1 match, other request gets 409 |
+| Duplicate pending challenge                        | Partial unique index                                                                                      | —                                               |
+| Accept after expiry                                | `expires_at > now()` in the CAS                                                                           | Fake clock                                      |
+| Two AC verdicts processed at the same time         | CAS on `matches.status` + earliest-submitted rule                                                         | Inject out-of-order judged events               |
+| AC judged before an earlier-submitted pending one  | `deciding` state                                                                                          | Scripted fake-judge0 latencies                  |
+| Timeout job and AC verdict race                    | Both use CAS; whichever commits first wins. The loser updates 0 rows and does nothing.                    | Parallel test                                   |
+| Kafka redelivery of `match.completed`              | Inbox + ledger `UNIQUE(match_id,user_id,reason)`                                                          | Replay the event 5× → coins change once         |
+| BullMQ job retried after a partial failure         | `jobId` dedupe + CAS updates + `judge_runs` token check                                                   | Kill the worker mid-job                         |
+| Judge0 POST retried (not idempotent on their side) | Create the `judge_runs` row **before** POST; save the token immediately; on retry, poll if a token exists | Simulated timeout after POST                    |
+| Friend request A→B and B→A together                | Canonical pair PK + `ON CONFLICT`                                                                         | Parallel test                                   |
+| Coin floor at 0 under concurrency                  | `UPDATE … SET coins = GREATEST(coins + $d, 0)` in the same transaction as the ledger insert               | —                                               |
+| HTTP retry with a different body but the same key  | `request_hash` mismatch → `422 IDEMPOTENCY_KEY_REUSED`                                                    | —                                               |
+| Email sent twice                                   | `email_log.dedupe_key` PK; check before calling the provider, record after                                | —                                               |
+| Two reconciler instances                           | `pg_try_advisory_lock` leader election                                                                    | Run 2 workers                                   |
 
 **Idempotency-Key middleware** (`libs/idempotency`):
+
 1. Look up `(user, key)`.
 2. If `done` and the hash matches, replay the stored response. If `in_progress`, return `409 REQUEST_IN_PROGRESS`.
 3. Otherwise insert `in_progress` (with a Redis `SET NX` fast path), run the handler, then store the response. Keys expire after 24 h.
@@ -1004,6 +1061,7 @@ Rules:
 ## 13. Realtime design
 
 ### 13.1 Connection and authentication: the socket ticket
+
 - The web app runs on Vercel and the API on the VM. **Vercel rewrites don't proxy WebSockets**, and third-party cookies are unreliable, so the socket doesn't use cookies.
 - Flow:
   1. The client calls same-origin `POST /api/v1/auth/socket-ticket` (cookie auth through the Next rewrite).
@@ -1015,12 +1073,14 @@ Rules:
 - On connect: `socket.join('user:' + userId)` **locally**, then register presence.
 
 ### 13.2 Delivery (no Redis adapter in the critical path)
+
 - Each realtime node runs a Kafka consumer with **its own group id** (`realtime-{nodeId}`, so every node receives every event) and reads from the latest offset.
 - For each event that has `recipients`, the node runs `io.local.to('user:'+uid).emit(type, envelope)` for each recipient. Only sockets on that node receive it.
 - **Why:** there's no cross-node join or lookup, and delivery keeps working if Redis is down. This scales to several nodes; at very large scale, switch to node-targeted routing (a presence map `userId → nodeId` plus per-node topics).
 - Each server→client message carries `{eventId, type, seq?, ts, data}`. Match-scoped events carry `seq = matches.version`. The client dedupes by `eventId` and resyncs when `seq` has a gap.
 
 ### 13.3 Presence
+
 - **Per connection:**
   - `HSET presence:{userId} {connId} {nodeId}` with `PEXPIRE` 60 s.
   - `ZADD presence:online {nowMs} {userId}`.
@@ -1041,32 +1101,35 @@ Rules:
 - **Leaderboard and friends dots:** `POST /presence/query {userIds}` → pipelined `EXISTS presence:{id}` calls.
 
 ### 13.4 Socket event catalog (`packages/contracts/socket`)
+
 **Client → server:** `presence:ping` only. Everything else is REST.
 
 **Server → client:**
 
-| Event | Data | Replaces v1 |
-|---|---|---|
-| `presence:snapshot` | `{ friends: [{userId, username, avatarUrl, status}] }` (on connect) | `getOnlineUsers` |
-| `presence:update` | `{ userId, status }` | `getOnlineUsers` |
-| `challenge:received` | `{ challengeId, from:{userId, username, avatarUrl}, expiresAt }` | `playNotification` |
-| `challenge:updated` | `{ challengeId, status, matchId? }` | `challengeRejected`, `challengeCancelled`, `roomCreating` |
-| `match:started` | `{ matchId, opponent, problem(public), startedAt, endsAt, serverNow }` | `startContest` |
-| `match:aborted` | `{ matchId, reason }` | `contestError` |
-| `submission:progress` | `{ submissionId, stage, status }` (submitter only) | — |
-| `submission:verdict` | `{ submissionId, verdict, failedFile?, failedCase?, maxCpuMs?, maxMemKb?, message? }` (submitter only) | REST result of `/submit` |
-| `match:opponent-activity` | `{ type:'submitted'|'judged', verdict? }` (no code, no details) | — |
-| `match:deciding` | `{ matchId }` | — |
-| `match:ended` | `{ matchId, winnerId|null, endReason, coinsDelta }` | `contestEnded` |
-| `stats:updated` | `{ coins, level }` | — |
-| `notification:new` | `{ notification }` | — |
+| Event                     | Data                                                                                                   | Replaces v1                                               |
+| ------------------------- | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------- |
+| `presence:snapshot`       | `{ friends: [{userId, username, avatarUrl, status}] }` (on connect)                                    | `getOnlineUsers`                                          |
+| `presence:update`         | `{ userId, status }`                                                                                   | `getOnlineUsers`                                          |
+| `challenge:received`      | `{ challengeId, from:{userId, username, avatarUrl}, expiresAt }`                                       | `playNotification`                                        |
+| `challenge:updated`       | `{ challengeId, status, matchId? }`                                                                    | `challengeRejected`, `challengeCancelled`, `roomCreating` |
+| `match:started`           | `{ matchId, opponent, problem(public), startedAt, endsAt, serverNow }`                                 | `startContest`                                            |
+| `match:aborted`           | `{ matchId, reason }`                                                                                  | `contestError`                                            |
+| `submission:progress`     | `{ submissionId, stage, status }` (submitter only)                                                     | —                                                         |
+| `submission:verdict`      | `{ submissionId, verdict, failedFile?, failedCase?, maxCpuMs?, maxMemKb?, message? }` (submitter only) | REST result of `/submit`                                  |
+| `match:opponent-activity` | `{ type:'submitted'                                                                                    | 'judged', verdict? }` (no code, no details)               | —              |
+| `match:deciding`          | `{ matchId }`                                                                                          | —                                                         |
+| `match:ended`             | `{ matchId, winnerId                                                                                   | null, endReason, coinsDelta }`                            | `contestEnded` |
+| `stats:updated`           | `{ coins, level }`                                                                                     | —                                                         |
+| `notification:new`        | `{ notification }`                                                                                     | —                                                         |
 
 ### 13.5 Multi-tab battle lease
+
 - The battle page acquires `SET battle-tab:{matchId}:{userId} {tabId} NX PX 30000` through `POST /matches/:id/tab-lease`, and renews it every 10 s.
 - Other tabs show the MultitabAlert with a "Use here" button, which takes the lease over.
 - The client also uses a `BroadcastChannel` for instant same-browser detection.
 
 ### 13.6 Protection
+
 - Per-connection limits: max 30 inbound events per minute, 1 KB payload cap.
 - Max 5 connections per user.
 - Graceful shutdown: on SIGTERM, stop accepting connections, emit `server:reconnect`, close sockets over 10 s, then exit.
@@ -1076,6 +1139,7 @@ Rules:
 ## 14. Judge design (hosted Judge0 API only)
 
 ### 14.1 Constraints of hosted Judge0 (checked 2026-11-08; re-verify, see §28)
+
 - Every test file run = **one Judge0 submission**, and **each one recompiles**. The hosted API has no compile-once mode.
 - **Quota:**
   - RapidAPI "Basic" free plan exists, but its daily quota wasn't verified.
@@ -1091,6 +1155,7 @@ Rules:
 - Language IDs differ between Judge0 versions. **Resolve them from `GET /languages` at boot** into `language_profiles` (v1 used cpp=52, java=62, python=71, javascript=63).
 
 ### 14.2 Test data design: few packed files (cost minimisation)
+
 - Each problem has **3, at most 4, test files**. Each file contains many cases in the Codeforces "`t` test cases" format:
   1. `sample`: the statement examples.
   2. `small`: **every correctness and edge case** packed together.
@@ -1104,16 +1169,17 @@ Rules:
 
 ### 14.3 Judging stages and quota per action
 
-| Action | Stage 1 (one batch POST) | Stage 2 (one batch POST) | Max Judge0 submissions |
-|---|---|---|---|
-| **Run** (samples or custom input) | `sample` (+ custom input) | — | 1–2 |
-| **Submit** | `sample` + `small` | `large` (1–2) | **3–4** |
+| Action                            | Stage 1 (one batch POST)  | Stage 2 (one batch POST) | Max Judge0 submissions |
+| --------------------------------- | ------------------------- | ------------------------ | ---------------------- |
+| **Run** (samples or custom input) | `sample` (+ custom input) | —                        | 1–2                    |
+| **Submit**                        | `sample` + `small`        | `large` (1–2)            | **3–4**                |
 
 - Stage 2 runs only if stage 1 is fully AC (**fail fast**). In battles most submissions fail early, so most never reach stage 2.
 - A compile error (CE) in stage 1 stops the submission immediately.
 - **Estimate:** about 20–30 Judge0 calls per match (2 players × about 6 submits × a fail-fast average), versus about 120 for naive per-test judging.
 
 ### 14.4 Pipeline (non-blocking: the worker never sleeps waiting on Judge0)
+
 ```
 judge-submit job(submissionId):
   CAS submissions queued→running (0 rows ⇒ already handled ⇒ return)
@@ -1147,6 +1213,7 @@ aggregate(submissionId):  (idempotent; row lock on the submission)
   else finalize: UPDATE submissions SET status='done', verdict, ... WHERE id=$1 AND status='running'
        outbox judge.submission.judged.v1 ; cache verdict by (problem_version, code_hash) for 7 days
 ```
+
 - **Callbacks need a public HTTPS URL** (the VM behind Caddy). In local dev, set `JUDGE0_MODE=poll`.
 - **Circuit breaker on the Judge0 client:** 5 consecutive failures or 50% errors over 30 s → open for 30 s.
   - While it is open, submissions stay `queued` with `message='judging delayed'`, and **battle admission control refuses new matches.**
@@ -1154,39 +1221,45 @@ aggregate(submissionId):  (idempotent; row lock on the submission)
 - **Retries:** network errors and 5xx use exponential backoff with jitter. A 429 honours `Retry-After`. Other 4xx are fatal → IE + alert.
 
 ### 14.5 Verdict classification (`packages/domain/judge-core`)
+
 **Request limits per file:**
 
-| Parameter | Value |
-|---|---|
-| `cpu_time_limit` | `limitSec` = calibrated `problem_language_limits.cpu_limit_ms` (fallback: base × language factor) × drift factor |
-| `cpu_extra_time` | `max(0.5, 0.1 × limitSec)`: grace, so near-miss times are visible |
-| `wall_time_limit` | `3 × limitSec + 1`: backstop for sleeping or blocked programs |
-| `memory_limit` | `problem.memory_limit_kb + lang.mem_overhead_kb` (≤ instance maximum) |
-| `stack_limit` | Same as the memory limit, capped by the instance |
-| `max_processes_and_or_threads` | `lang.max_processes` |
-| `enable_per_process_and_thread_time_limit` | `false` (CPU time is counted across all threads) |
-| `max_file_size` | `problem.output_limit_kb` |
-| `expected_output` | **Never sent.** Our checker decides AC/WA. |
-| `number_of_runs` | `1` |
+| Parameter                                  | Value                                                                                                            |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| `cpu_time_limit`                           | `limitSec` = calibrated `problem_language_limits.cpu_limit_ms` (fallback: base × language factor) × drift factor |
+| `cpu_extra_time`                           | `max(0.5, 0.1 × limitSec)`: grace, so near-miss times are visible                                                |
+| `wall_time_limit`                          | `3 × limitSec + 1`: backstop for sleeping or blocked programs                                                    |
+| `memory_limit`                             | `problem.memory_limit_kb + lang.mem_overhead_kb` (≤ instance maximum)                                            |
+| `stack_limit`                              | Same as the memory limit, capped by the instance                                                                 |
+| `max_processes_and_or_threads`             | `lang.max_processes`                                                                                             |
+| `enable_per_process_and_thread_time_limit` | `false` (CPU time is counted across all threads)                                                                 |
+| `max_file_size`                            | `problem.output_limit_kb`                                                                                        |
+| `expected_output`                          | **Never sent.** Our checker decides AC/WA.                                                                       |
+| `number_of_runs`                           | `1`                                                                                                              |
 
 **Judge0 `status.id` → our verdict (first match wins):**
+
 ```ts
-export function classifyRun(r: Judge0Result, lim: { cpuSec: number; wallSec: number; memKb: number }): Verdict | 'CHECK' {
+export function classifyRun(
+  r: Judge0Result,
+  lim: { cpuSec: number; wallSec: number; memKb: number },
+): Verdict | 'CHECK' {
   const id = r.status.id;
-  if (id === 13 || id === 14) return 'IE';                         // internal / exec format error → retry
+  if (id === 13 || id === 14) return 'IE'; // internal / exec format error → retry
   if (id === 6) return 'CE';
-  const cpu = r.time == null ? null : Number(r.time);              // CPU seconds (string in API)
+  const cpu = r.time == null ? null : Number(r.time); // CPU seconds (string in API)
   const wall = r.wall_time == null ? null : Number(r.wall_time);
   if (id === 5 || (cpu != null && cpu > lim.cpuSec) || (wall != null && wall > lim.wallSec)) return 'TLE';
-  if (id === 8) return 'OLE';                                      // SIGXFSZ
+  if (id === 8) return 'OLE'; // SIGXFSZ
   const memHit = r.memory != null && r.memory >= 0.95 * lim.memKb;
   const oomText = /OutOfMemoryError|MemoryError|std::bad_alloc|heap out of memory/i.test(r.stderr ?? '');
   if (id >= 7 && id <= 12) return memHit || oomText ? 'MLE' : 'RE'; // SIGSEGV/SIGFPE/SIGABRT/NZEC/Other
-  if (id === 3) return 'CHECK';                                     // ran cleanly → run checker → AC | WA
-  if (id === 1 || id === 2) throw new Error('not final');           // never classify queued/processing
+  if (id === 3) return 'CHECK'; // ran cleanly → run checker → AC | WA
+  if (id === 1 || id === 2) throw new Error('not final'); // never classify queued/processing
   return 'IE';
 }
 ```
+
 - **Checkers:**
   - `tokens` (default; whitespace-insensitive, like Codeforces' `wcmp`).
   - `float` (absolute/relative epsilon).
@@ -1196,6 +1269,7 @@ export function classifyRun(r: Judge0Result, lim: { cpuSec: number; wallSec: num
 - **What users see:** verdict, file kind, case number, max time and memory. **Inputs are shown only for sample cases**, otherwise players could hard-code hidden answers. Compile output is trimmed to 2 KB.
 
 ### 14.6 Quota management (target ≈ ₹0)
+
 1. **Packing + staging + fail fast** (§14.2–14.3).
 2. **Verdict cache:** `judge:cache:{problemVersion}:{codeHash}`, 7 days, with a fallback lookup in the DB index. Identical resubmissions cost 0 calls.
 3. **Gates before spending quota:** 1 submit per 5 s, at most 15 per match per user, the code must change, and Run uses only the sample file.
@@ -1209,6 +1283,7 @@ export function classifyRun(r: Judge0Result, lim: { cpuSec: number; wallSec: num
 8. **Policy:** never create multiple free accounts or rotate keys to get around quotas (that breaks the terms of service). For demo days, take a paid plan for one month.
 
 ### 14.7 Time-limit calibration (Kattis/Polygon-style, run through Judge0)
+
 - **Publishing requires:**
   - ≥1 AC reference solution (C++ required; Java and Python recommended);
   - ≥1 must-TLE solution (e.g. brute force).
@@ -1223,21 +1298,30 @@ export function classifyRun(r: Judge0Result, lim: { cpuSec: number; wallSec: num
 - On publish: `version++`, which invalidates verdict caches and triggers `problem.published.v1`.
 
 ### 14.8 Drift tracking
+
 - A weekly `judge-drift-check` runs fixed benchmark programs (C++ and Python), about 2–4 calls.
 - It compares the times with the baseline median.
 - If drift exceeds ±20%, it sets a global `drift_factor` (capped between 0.5 and 2.0) that multiplies every limit. This is the same idea as Codeforces doubling time limits after a hardware change.
 - The factor is exposed as a metric and on the admin page.
 
 ### 14.9 Rejudge
+
 - When a problem's tests change, `version` is bumped and an admin can enqueue a `rejudge` of affected submissions. That's practice and audit only.
 - **Completed matches are not reversed by default.** If an admin chooses to reverse one, it's done with compensating ledger entries (`reason='rejudge_reversal'`), which are idempotent through the ledger's unique key.
 
 ### 14.10 `CodeExecutor` interface (to swap in a self-hosted judge later)
+
 ```ts
 interface CodeExecutor {
   submitBatch(runs: ExecRequest[]): Promise<{ runId: string; token: string }[]>;
   fetchBatch(tokens: string[]): Promise<ExecResult[]>;
-  info(): Promise<{ maxCpuSec: number; maxMemKb: number; maxFileKb: number; maxBatch: number; languages: LangInfo[] }>;
+  info(): Promise<{
+    maxCpuSec: number;
+    maxMemKb: number;
+    maxFileKb: number;
+    maxBatch: number;
+    languages: LangInfo[];
+  }>;
 }
 // Implementations: Judge0HttpExecutor (RapidAPI header mode | X-Auth-Token mode | none), FakeJudge0 (via apps/fake-judge0)
 ```
@@ -1306,39 +1390,44 @@ interface CodeExecutor {
 ## 17. Caching, rate limiting, performance
 
 ### 17.1 Caching
-| Data | Strategy | TTL / invalidation |
-|---|---|---|
-| Problem public view | Next ISR + Redis cache-aside | Invalidate on `problem.updated.v1` |
-| Judge spec + test files | Local LRU (keyed by sha256) + Redis | Immutable per version |
-| Profiles batch (leaderboard) | Redis | 30 s |
-| Friend sets (presence fan-out) | Redis SET | Invalidate on friendship event |
-| Match participation (judge intake) | Redis | Until `ends_at` |
-| JWKS | In-memory | 10 min, refetch on unknown `kid` |
+
+| Data                               | Strategy                            | TTL / invalidation                 |
+| ---------------------------------- | ----------------------------------- | ---------------------------------- |
+| Problem public view                | Next ISR + Redis cache-aside        | Invalidate on `problem.updated.v1` |
+| Judge spec + test files            | Local LRU (keyed by sha256) + Redis | Immutable per version              |
+| Profiles batch (leaderboard)       | Redis                               | 30 s                               |
+| Friend sets (presence fan-out)     | Redis SET                           | Invalidate on friendship event     |
+| Match participation (judge intake) | Redis                               | Until `ends_at`                    |
+| JWKS                               | In-memory                           | 10 min, refetch on unknown `kid`   |
 
 - **Single-flight** (coalesce concurrent misses for the same key) and **jittered TTLs** (±10%) prevent cache stampedes.
 - **L1 in-process LRU** (≤ 5 s) in front of Redis for hot keys. It also protects the DB if Redis is down.
 
 ### 17.2 Rate limiting (gateway, Redis Lua token bucket; in-memory fallback)
-| Route | Limit |
-|---|---|
-| Global per IP | 300/min |
-| Auth login / register / forgot | 5/min per IP+identifier, 20/min per IP |
-| `POST /challenges` | 10/min per user |
-| `POST /submissions` (submit) | 1 per 5 s per user per match; max 15 per match |
-| `POST /submissions` (run) | 6/min per user |
-| AI endpoints | Per-user daily token quota (§22) |
-| Search | 60/min per user |
+
+| Route                          | Limit                                          |
+| ------------------------------ | ---------------------------------------------- |
+| Global per IP                  | 300/min                                        |
+| Auth login / register / forgot | 5/min per IP+identifier, 20/min per IP         |
+| `POST /challenges`             | 10/min per user                                |
+| `POST /submissions` (submit)   | 1 per 5 s per user per match; max 15 per match |
+| `POST /submissions` (run)      | 6/min per user                                 |
+| AI endpoints                   | Per-user daily token quota (§22)               |
+| Search                         | 60/min per user                                |
 
 Responses include `RateLimit-*` headers; a 429 includes `Retry-After`.
 
 ### 17.3 Performance rules
+
 - No N+1 queries. Use batch endpoints (`/users/batch`, `/presence/query`) and Redis pipelines.
 - Cursor pagination everywhere. Indexes as defined in §9. Run `EXPLAIN ANALYZE` on every new query in its PR.
 - **PgBouncer** (transaction pooling) is optional on the single VM. Without it, keep pool sizes small: about 5 per service process.
 - Compression: Caddy gzip/zstd.
 
 ### 17.4 Capacity estimate (for interviews; not the demo)
+
 Assume 100k DAU, 10k concurrent sockets, 2k concurrent matches, about 6 submits per user per match, and 30-minute matches.
+
 - **Submissions:** 2000 × 2 × 6 / 1800 s ≈ **13/s average, about 50/s peak**.
 - **Judge0 calls:** ≈ 3 × submissions → **40–150/s at peak**. That would need a self-hosted judge or an enterprise plan, which is exactly why `CodeExecutor` is an interface.
 - **Realtime:** 10k sockets fit on 2–3 nodes. Presence pings: 10k / 25 s = **400 Redis writes/s**, which is trivial.
@@ -1351,43 +1440,51 @@ Assume 100k DAU, 10k concurrent sockets, 2k concurrent matches, about 6 submits 
 **Principle:** Redis, Kafka, Judge0 and the AI provider may fail without corrupting data. **Postgres is the source of truth.**
 
 ### 18.1 Redis
+
 **Client settings:**
+
 - Cache, rate-limit and presence clients: `enableOfflineQueue:false`, `commandTimeout:150ms`, wrapped in a circuit breaker (after 5 failures, skip Redis for 10 s).
 - BullMQ clients: `maxRetriesPerRequest:null`.
 
-| Role | When Redis is down | When it recovers |
-|---|---|---|
-| Cache | Read Postgres; L1 LRU absorbs bursts | Warms up naturally |
-| Rate limit | In-memory token bucket per instance (limit ÷ instances). Login is stricter. | Automatic |
-| Idempotency fast path | Postgres `idempotency_keys` is authoritative | — |
-| Auth | Unaffected: JWT + JWKS; refresh tokens are in Postgres. Socket tickets skip the single-use check. | — |
-| Leaderboard | Postgres index fallback (§15) | `leaderboard-rebuild` |
-| Presence | UI shows "presence unavailable"; challenges still work via REST (the online check is skipped) | Self-heals through 25 s pings |
-| Realtime delivery | **Unaffected:** delivery is Kafka → per-node local emit (§13.2) | — |
-| BullMQ | Intent is durable in Postgres (`submissions.status='queued'`, `job_outbox`, `matches.ends_at`). **Timeouts still fire** through the Postgres-leader reconciler. **Judging degrades** to judge workers polling `submissions WHERE status='queued' FOR UPDATE SKIP LOCKED`, with Postgres acting as a backup queue. | The job-outbox dispatcher re-enqueues with the same `jobId`; duplicates are harmless |
+| Role                  | When Redis is down                                                                                                                                                                                                                                                                                                | When it recovers                                                                     |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Cache                 | Read Postgres; L1 LRU absorbs bursts                                                                                                                                                                                                                                                                              | Warms up naturally                                                                   |
+| Rate limit            | In-memory token bucket per instance (limit ÷ instances). Login is stricter.                                                                                                                                                                                                                                       | Automatic                                                                            |
+| Idempotency fast path | Postgres `idempotency_keys` is authoritative                                                                                                                                                                                                                                                                      | —                                                                                    |
+| Auth                  | Unaffected: JWT + JWKS; refresh tokens are in Postgres. Socket tickets skip the single-use check.                                                                                                                                                                                                                 | —                                                                                    |
+| Leaderboard           | Postgres index fallback (§15)                                                                                                                                                                                                                                                                                     | `leaderboard-rebuild`                                                                |
+| Presence              | UI shows "presence unavailable"; challenges still work via REST (the online check is skipped)                                                                                                                                                                                                                     | Self-heals through 25 s pings                                                        |
+| Realtime delivery     | **Unaffected:** delivery is Kafka → per-node local emit (§13.2)                                                                                                                                                                                                                                                   | —                                                                                    |
+| BullMQ                | Intent is durable in Postgres (`submissions.status='queued'`, `job_outbox`, `matches.ends_at`). **Timeouts still fire** through the Postgres-leader reconciler. **Judging degrades** to judge workers polling `submissions WHERE status='queued' FOR UPDATE SKIP LOCKED`, with Postgres acting as a backup queue. | The job-outbox dispatcher re-enqueues with the same `jobId`; duplicates are harmless |
 
 **Production profile:** split into three Redis instances (queue: `noeviction` + AOF everysec; cache: `allkeys-lru`, no persistence; realtime/presence: ephemeral), each with a replica and Sentinel or managed failover.
 
 **Demo profile:** one Redis with `noeviction` (required by BullMQ). Every cache key **must have a TTL**, and `maxmemory` is sized to 512 MB. This is a known single point of failure for the demo and is mitigated by the fallbacks above.
 
 ### 18.2 Kafka
+
 - If it is down, outbox rows accumulate and are published on recovery. **No events are lost; they're delayed.**
 - Realtime pushes pause; clients resync over REST on focus or reconnect, and every 30 s while on a battle page.
 - Production: 3 brokers, RF=3, `min.insync.replicas=2`, idempotent producer, `acks=all`.
 
 ### 18.3 Postgres
+
 This is the real single point of truth.
+
 - **Demo:** nightly `pg_dump` of each DB to R2 (free), with a tested restore script.
 - **Production:** primary + synchronous standby (Patroni or managed), point-in-time recovery.
 - Services expose readiness = DB reachable, so the gateway returns 503 quickly instead of hanging.
 
 ### 18.4 Judge0
+
 Circuit breaker, queued submissions, admission control, the deciding cap and abort without coin change (§14.4, §11.4).
 
 ### 18.5 AI provider
+
 Feature flags. Fallback to a cheaper model, then to "AI unavailable". Never in the critical path of a match.
 
 ### 18.6 Chaos drills (Phase 6; good interview demos)
+
 1. `docker stop redis` mid-match → the match continues (timer, forfeit, Postgres-mode judging) → start Redis again → leaderboard and presence rebuild themselves.
 2. Kill a realtime node → clients reconnect to another node and resync.
 3. `docker stop redpanda` → actions still succeed; pushes are delayed and arrive after restart.
@@ -1416,17 +1513,17 @@ Feature flags. Fallback to a cheaper model, then to "AI unavailable". Never in t
 
 ## 20. Testing strategy
 
-| Layer | Tooling | What |
-|---|---|---|
-| Unit | Vitest | `domain/*`: state machines, scoring, verdict classification, checkers (100% branch coverage target) |
-| Integration | Vitest + **Testcontainers** (Postgres, Redis, Redpanda) | Repositories, transactions, outbox/inbox, consumers, BullMQ processors |
-| **Race tests** | Vitest + `Promise.all` | Every row in the §12 matrix |
-| Contract | zod schemas in `contracts` | Producers validate before publishing; consumers validate on receive; HTTP schemas generate OpenAPI (`/docs`) |
-| Judge | `apps/fake-judge0` | Scripted verdicts and latencies (e.g. the code contains `// @fake verdict=TLE time=2.3 delay=4000`), callback and polling modes, 429/500 injection |
-| E2E | Playwright | Register → verify (fake email inbox) → friend → challenge → accept → submit → win → leaderboard |
-| Load | **k6** (HTTP + `k6/ws`) | 2k sockets + 200 concurrent matches on the demo VM against fake-judge0. Record p95s for the README. |
-| Chaos | Scripts in `infra/chaos/` | §18.6 |
-| Nightly | GitHub Action | Real Judge0 contract test (about 10 calls) |
+| Layer          | Tooling                                                 | What                                                                                                                                               |
+| -------------- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unit           | Vitest                                                  | `domain/*`: state machines, scoring, verdict classification, checkers (100% branch coverage target)                                                |
+| Integration    | Vitest + **Testcontainers** (Postgres, Redis, Redpanda) | Repositories, transactions, outbox/inbox, consumers, BullMQ processors                                                                             |
+| **Race tests** | Vitest + `Promise.all`                                  | Every row in the §12 matrix                                                                                                                        |
+| Contract       | zod schemas in `contracts`                              | Producers validate before publishing; consumers validate on receive; HTTP schemas generate OpenAPI (`/docs`)                                       |
+| Judge          | `apps/fake-judge0`                                      | Scripted verdicts and latencies (e.g. the code contains `// @fake verdict=TLE time=2.3 delay=4000`), callback and polling modes, 429/500 injection |
+| E2E            | Playwright                                              | Register → verify (fake email inbox) → friend → challenge → accept → submit → win → leaderboard                                                    |
+| Load           | **k6** (HTTP + `k6/ws`)                                 | 2k sockets + 200 concurrent matches on the demo VM against fake-judge0. Record p95s for the README.                                                |
+| Chaos          | Scripts in `infra/chaos/`                               | §18.6                                                                                                                                              |
+| Nightly        | GitHub Action                                           | Real Judge0 contract test (about 10 calls)                                                                                                         |
 
 **CI gates:** lint, typecheck, unit, integration (only affected packages via `turbo --filter=...[origin/main]`), build. E2E runs on main.
 
@@ -1435,6 +1532,7 @@ Feature flags. Fallback to a cheaper model, then to "AI unavailable". Never in t
 ## 21. Frontend (Next.js) plan
 
 ### 21.1 Stack
+
 - Next.js App Router on **Vercel Hobby**.
 - TanStack Query (server state), **Zustand** (UI/socket state; **Redux is removed**).
 - Tailwind + **shadcn/ui** (`packages/ui`), Framer Motion, Recharts.
@@ -1442,26 +1540,29 @@ Feature flags. Fallback to a cheaper model, then to "AI unavailable". Never in t
 - `next/font`; `next/image` with a Cloudinary loader.
 
 ### 21.2 Routes and rendering
-| Route | Rendering | v1 component |
-|---|---|---|
-| `/` landing | SSG | HomePage + TypingEffect |
-| `/login`, `/register`, `/verify-email`, `/forgot-password`, `/reset-password` | Static + client forms | Login, EmailVerification, PasswordReset |
-| `/lobby` | SSR (BFF lobby) + live presence | MainSection, Matching/Match, ActiveContests banner |
-| `/friends` | SSR + Query | Friends, FriendRequest |
-| `/leaderboard` | **ISR 30 s** + client "my rank" + presence dots | LeaderBoard |
-| `/u/[username]` | **ISR + on-demand revalidate** (webhook on `match.completed`) | Profile (Header, Stats, PerformanceGraph, ContestHistory) |
-| `/battle/[matchId]` | **Client-only** island (editor loaded with `dynamic()`, `ssr:false`) | Problem, CodeEditor, LanguageSelector, Timer, Navbar |
-| `/notifications` | SSR + Query | NotificationPanel |
-| `/admin/problems`, `/admin/problems/new`, `/admin/problems/[id]` | SSR, admin-gated | AddQuestion (expanded: test files, reference solutions, calibrate, publish) |
-| `/practice/[slug]` (later) | ISR | — |
+
+| Route                                                                         | Rendering                                                            | v1 component                                                                |
+| ----------------------------------------------------------------------------- | -------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `/` landing                                                                   | SSG                                                                  | HomePage + TypingEffect                                                     |
+| `/login`, `/register`, `/verify-email`, `/forgot-password`, `/reset-password` | Static + client forms                                                | Login, EmailVerification, PasswordReset                                     |
+| `/lobby`                                                                      | SSR (BFF lobby) + live presence                                      | MainSection, Matching/Match, ActiveContests banner                          |
+| `/friends`                                                                    | SSR + Query                                                          | Friends, FriendRequest                                                      |
+| `/leaderboard`                                                                | **ISR 30 s** + client "my rank" + presence dots                      | LeaderBoard                                                                 |
+| `/u/[username]`                                                               | **ISR + on-demand revalidate** (webhook on `match.completed`)        | Profile (Header, Stats, PerformanceGraph, ContestHistory)                   |
+| `/battle/[matchId]`                                                           | **Client-only** island (editor loaded with `dynamic()`, `ssr:false`) | Problem, CodeEditor, LanguageSelector, Timer, Navbar                        |
+| `/notifications`                                                              | SSR + Query                                                          | NotificationPanel                                                           |
+| `/admin/problems`, `/admin/problems/new`, `/admin/problems/[id]`              | SSR, admin-gated                                                     | AddQuestion (expanded: test files, reference solutions, calibrate, publish) |
+| `/practice/[slug]` (later)                                                    | ISR                                                                  | —                                                                           |
 
 ### 21.3 API topology
+
 - `next.config` rewrites `/api/:path*` → `https://api.<domain>/api/:path*`. This keeps requests same-origin, avoids CORS and keeps cookies first-party.
 - Server Components fetch the gateway directly, forwarding the cookie.
 - Sockets connect directly to `wss://rt.<domain>` with the ticket (§13.1).
 - `middleware.ts` is only an optimistic guard (cookie present → allow; else redirect to `/login`). Real authorization happens at the gateway.
 
 ### 21.4 Performance and correctness
+
 - **Server clock sync:** NTP-style. Use the `serverNow` from the state/started payload and a ping round-trip → `offset`. Timer = `endsAt - (Date.now() + offset)`. This is drift-free and immune to client clock changes.
 - **Editor draft autosave** per `matchId` and language to IndexedDB (`idb-keyval`), restored on reload.
 - **Socket provider:** a singleton with typed events. On event: `queryClient.setQueryData` (no refetch storms). Dedupe by `eventId`. Resync on a `seq` gap or on `visibilitychange`.
@@ -1472,6 +1573,7 @@ Feature flags. Fallback to a cheaper model, then to "AI unavailable". Never in t
 - **Security:** no tokens in localStorage; CSP; the editor never runs user code in the browser.
 
 ### 21.5 UI/UX improvements
+
 - **Design system:** dark-first tokens, shadcn components, Storybook, Playwright visual snapshots.
 - **Battle room:**
   - Resizable panels (`react-resizable-panels`): problem | editor | console/results.
@@ -1496,6 +1598,7 @@ Feature flags. Fallback to a cheaper model, then to "AI unavailable". Never in t
 ## 22. AI integration plan
 
 ### 22.1 Principles
+
 - AI is **never in the critical path** of a match (judging and winner decisions don't use it).
 - **Cost ≈ ₹0 by default:**
   - `AI_ENABLED=false` unless `ANTHROPIC_API_KEY` is set.
@@ -1504,17 +1607,19 @@ Feature flags. Fallback to a cheaper model, then to "AI unavailable". Never in t
 - **Embeddings are free:** a local **transformers.js** model (`bge-small-en-v1.5` or `all-MiniLM-L6-v2`, 384-dim) runs on the VM's CPU. Stored in **pgvector**.
 
 ### 22.2 Features (in priority order)
-| # | Feature | Trigger | Design |
-|---|---|---|---|
-| 1 | **AI post-match coach** | `battle.match.completed.v1` → `ai-review` job (only if both opted in, or the viewer requests it) | Input: problem, both final codes, verdicts. Output (zod-structured): complexity, bugs, cleaner approach, comparison with opponent, 3 tips. Cached by `(problemId, codeHashA, codeHashB)`. Streamed to `/u/...` and the end screen. Model: `claude-haiku-5-5`; `claude-sonnet-5-5` only when explicitly requested. |
-| 2 | **Progressive hints** (practice; in battles they cost coins) | `POST /ai/hints {problemId, level 1..3}` (SSE) | RAG over statement + editorial + the user's code. **Leak guard:** a second cheap call ("does this reveal a full solution? yes/no") blocks full solutions; regenerate or refuse. Hints in battles cost 10/20/30 coins through the **idempotent ledger** (`reason='hint_purchase'`, unique per match, user and level). |
-| 3 | **RAG tutor** ("why WA?", "explain prefix sums") | `POST /ai/tutor` (SSE) | Corpus: problems, editorials, curated DSA notes (markdown in repo `content/dsa/`). Heading-aware chunking (≈500 tokens, 15% overlap). **Hybrid retrieval:** Postgres FTS (`tsvector`) + pgvector cosine, fused with RRF (k=60), top 8 → answer with citations. |
-| 4 | **Recommendations and balanced problem selection** | `GET /ai/recommendations` | Problem embeddings + a user weakness vector (tags from WA/TLE verdicts). Recommend practice problems. Optional: battle selection prefers problems near both players' weak and strong tags. |
-| 5 | **Agentic problem-generation pipeline** (admin) | `POST /ai/problems/generate {topic, difficulty}` → `ai-generate` job | LangGraph: draft statement → reference solution → brute force → test generator → **run both through Judge0 as tools** (counts against the budget) → cross-check → pack test files → **dedupe** against existing problems (embedding similarity > 0.9 → reject) → save as a **draft** for human review → normal calibration and publish. |
-| 6 | **Anti-cheat signals** | After each match | Plagiarism: tokenise + normalise identifiers → k-gram winnowing fingerprints (MOSS-style) compared with the opponent and recent submissions for the same problem. Client telemetry: paste bursts, tab blur. An LLM classifier is **one signal only**; the output is a **flag for review**, never an automatic penalty. |
-| 7 | **Bot opponent** (later) | "Play vs bot" | Solve time sampled from a distribution conditioned on difficulty and the player's level; uses a stored AC solution. No LLM call at runtime. |
+
+| #   | Feature                                                      | Trigger                                                                                          | Design                                                                                                                                                                                                                                                                                                                                  |
+| --- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **AI post-match coach**                                      | `battle.match.completed.v1` → `ai-review` job (only if both opted in, or the viewer requests it) | Input: problem, both final codes, verdicts. Output (zod-structured): complexity, bugs, cleaner approach, comparison with opponent, 3 tips. Cached by `(problemId, codeHashA, codeHashB)`. Streamed to `/u/...` and the end screen. Model: `claude-haiku-5-5`; `claude-sonnet-5-5` only when explicitly requested.                       |
+| 2   | **Progressive hints** (practice; in battles they cost coins) | `POST /ai/hints {problemId, level 1..3}` (SSE)                                                   | RAG over statement + editorial + the user's code. **Leak guard:** a second cheap call ("does this reveal a full solution? yes/no") blocks full solutions; regenerate or refuse. Hints in battles cost 10/20/30 coins through the **idempotent ledger** (`reason='hint_purchase'`, unique per match, user and level).                    |
+| 3   | **RAG tutor** ("why WA?", "explain prefix sums")             | `POST /ai/tutor` (SSE)                                                                           | Corpus: problems, editorials, curated DSA notes (markdown in repo `content/dsa/`). Heading-aware chunking (≈500 tokens, 15% overlap). **Hybrid retrieval:** Postgres FTS (`tsvector`) + pgvector cosine, fused with RRF (k=60), top 8 → answer with citations.                                                                          |
+| 4   | **Recommendations and balanced problem selection**           | `GET /ai/recommendations`                                                                        | Problem embeddings + a user weakness vector (tags from WA/TLE verdicts). Recommend practice problems. Optional: battle selection prefers problems near both players' weak and strong tags.                                                                                                                                              |
+| 5   | **Agentic problem-generation pipeline** (admin)              | `POST /ai/problems/generate {topic, difficulty}` → `ai-generate` job                             | LangGraph: draft statement → reference solution → brute force → test generator → **run both through Judge0 as tools** (counts against the budget) → cross-check → pack test files → **dedupe** against existing problems (embedding similarity > 0.9 → reject) → save as a **draft** for human review → normal calibration and publish. |
+| 6   | **Anti-cheat signals**                                       | After each match                                                                                 | Plagiarism: tokenise + normalise identifiers → k-gram winnowing fingerprints (MOSS-style) compared with the opponent and recent submissions for the same problem. Client telemetry: paste bursts, tab blur. An LLM classifier is **one signal only**; the output is a **flag for review**, never an automatic penalty.                  |
+| 7   | **Bot opponent** (later)                                     | "Play vs bot"                                                                                    | Solve time sampled from a distribution conditioned on difficulty and the player's level; uses a stored AC solution. No LLM call at runtime.                                                                                                                                                                                             |
 
 ### 22.3 Architecture of ai-service
+
 - Fastify API (SSE streaming) + BullMQ worker. LangChain.js for prompts, structured output and retrievers; **LangGraph.js** for the generation agent.
 - **Provider abstraction** (`ModelGateway`): primary model → fallback model → error. Timeouts, retries, token counting, cost accounting per call (`ai_requests`).
 - **Prompts are versioned in the repo** (`apps/ai-service/prompts/*.md`, with front-matter `version`). The prompt version is stored with every response.
@@ -1526,11 +1631,13 @@ Feature flags. Fallback to a cheaper model, then to "AI unavailable". Never in t
 - **Observability:** OTel spans + the `ai_requests` table (feature, model, tokens in/out, cost, latency, cache hit). Langfuse Cloud is optional if its free tier fits (verify).
 
 ### 22.4 Budget enforcement
+
 - Redis `ai:spend:{date}` (USD × 1e6, integer) is checked before each call. If over the limit, the feature returns `503 AI_BUDGET_EXHAUSTED`.
 - Per-user daily token quota, e.g. 20k tokens for hints and tutor.
 - Review generation is opt-in, so it doesn't run after every match.
 
 ### 22.5 AI security
+
 - **Prompt injection:** user code and messages are untrusted.
   - Wrap them in delimited data blocks (`<user_code>…</user_code>`).
   - The system prompt says to never follow instructions found inside the data.
@@ -1540,6 +1647,7 @@ Feature flags. Fallback to a cheaper model, then to "AI unavailable". Never in t
 - Hidden test cases are never placed in prompts that produce user-visible output.
 
 ### 22.6 ai_db
+
 ```sql
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE TABLE documents (id uuid PRIMARY KEY, source text NOT NULL, ref_id text, title text, version int NOT NULL DEFAULT 1, created_at timestamptz NOT NULL DEFAULT now());
@@ -1563,61 +1671,67 @@ CREATE TABLE hint_usage (user_id uuid, problem_id uuid, match_id uuid, level sma
 ## 23. Deployment (₹0 demo profile)
 
 ### 23.1 Target topology (free tiers; verified 2026-11-08, re-verify per §28)
-| Component | Where | Notes |
-|---|---|---|
-| Web (Next.js) | **Vercel Hobby** | Non-commercial use only. Rewrites `/api/*` to the API domain. |
-| Everything else | **One Oracle Cloud Always Free Ampere A1 VM** (now **2 OCPU / 12 GB**, cut from 4/24 in Aug 2026), Ubuntu, docker compose | ARM64 images. Oracle may reclaim idle Always Free instances, so keep backups (§18.3). If there's no A1 capacity in your region, retry or pick another home region at signup. |
-| Postgres | **On the VM** (one container, 8 logical DBs) | Neon free (100 projects × 1 GB, 100 CU-h/project/month) is the alternative. **Caveat:** our pollers (outbox sweeper, reconciler) keep Neon compute awake and would use up CU-hours, so self-hosting on the VM is preferred. |
-| Redis | On the VM | **Not Upstash.** Its free tier is 500K commands/month, which BullMQ and presence would exhaust in days. |
-| Kafka | **Redpanda on the VM** (`--smp 1 --memory 1G`) | Aiven free Kafka (5 topics × 2 partitions, 250 KiB/s, powers off when idle, no SLA) is the fallback; our topic plan fits within it. |
-| Judge0 | **Hosted API** (RapidAPI Basic free, or a judge0.com plan for demo days) | §14 |
-| Blobs | Cloudinary free (avatars), Cloudflare R2 free tier (test files, backups) | — |
-| Email | Resend or Brevo free tier (verify limits) | — |
-| DNS / TLS | Free **DuckDNS** subdomain + **Caddy** (automatic Let's Encrypt). Or a cheap domain (~₹800/yr) on Cloudflare. | Subdomains: `api.`, `rt.` |
-| Observability | Grafana Cloud free + Sentry free | — |
-| CI/CD | GitHub Actions + GHCR | — |
+
+| Component       | Where                                                                                                                     | Notes                                                                                                                                                                                                                       |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Web (Next.js)   | **Vercel Hobby**                                                                                                          | Non-commercial use only. Rewrites `/api/*` to the API domain.                                                                                                                                                               |
+| Everything else | **One Oracle Cloud Always Free Ampere A1 VM** (now **2 OCPU / 12 GB**, cut from 4/24 in Aug 2026), Ubuntu, docker compose | ARM64 images. Oracle may reclaim idle Always Free instances, so keep backups (§18.3). If there's no A1 capacity in your region, retry or pick another home region at signup.                                                |
+| Postgres        | **On the VM** (one container, 8 logical DBs)                                                                              | Neon free (100 projects × 1 GB, 100 CU-h/project/month) is the alternative. **Caveat:** our pollers (outbox sweeper, reconciler) keep Neon compute awake and would use up CU-hours, so self-hosting on the VM is preferred. |
+| Redis           | On the VM                                                                                                                 | **Not Upstash.** Its free tier is 500K commands/month, which BullMQ and presence would exhaust in days.                                                                                                                     |
+| Kafka           | **Redpanda on the VM** (`--smp 1 --memory 1G`)                                                                            | Aiven free Kafka (5 topics × 2 partitions, 250 KiB/s, powers off when idle, no SLA) is the fallback; our topic plan fits within it.                                                                                         |
+| Judge0          | **Hosted API** (RapidAPI Basic free, or a judge0.com plan for demo days)                                                  | §14                                                                                                                                                                                                                         |
+| Blobs           | Cloudinary free (avatars), Cloudflare R2 free tier (test files, backups)                                                  | —                                                                                                                                                                                                                           |
+| Email           | Resend or Brevo free tier (verify limits)                                                                                 | —                                                                                                                                                                                                                           |
+| DNS / TLS       | Free **DuckDNS** subdomain + **Caddy** (automatic Let's Encrypt). Or a cheap domain (~₹800/yr) on Cloudflare.             | Subdomains: `api.`, `rt.`                                                                                                                                                                                                   |
+| Observability   | Grafana Cloud free + Sentry free                                                                                          | —                                                                                                                                                                                                                           |
+| CI/CD           | GitHub Actions + GHCR                                                                                                     | —                                                                                                                                                                                                                           |
 
 ### 23.2 VM memory budget (12 GB)
-| Process | Approx. RAM |
-|---|---|
-| Postgres (`shared_buffers=512MB`) | 1.5 GB |
-| Redpanda | 1.2 GB |
-| Redis (`maxmemory 512mb`) | 0.6 GB |
-| 9 Node services (API) + 5 workers + realtime + gateway (~150 MB each, `--max-old-space-size=192`) | 2.5 GB |
-| ai-service with local embedding model | 0.8 GB |
-| Caddy, OTel Collector, misc | 0.5 GB |
-| **Total** | **≈ 7 GB (5 GB headroom)** |
+
+| Process                                                                                           | Approx. RAM                |
+| ------------------------------------------------------------------------------------------------- | -------------------------- |
+| Postgres (`shared_buffers=512MB`)                                                                 | 1.5 GB                     |
+| Redpanda                                                                                          | 1.2 GB                     |
+| Redis (`maxmemory 512mb`)                                                                         | 0.6 GB                     |
+| 9 Node services (API) + 5 workers + realtime + gateway (~150 MB each, `--max-old-space-size=192`) | 2.5 GB                     |
+| ai-service with local embedding model                                                             | 0.8 GB                     |
+| Caddy, OTel Collector, misc                                                                       | 0.5 GB                     |
+| **Total**                                                                                         | **≈ 7 GB (5 GB headroom)** |
 
 ### 23.3 docker-compose.prod.yml services
+
 `caddy, gateway, realtime, identity, user, battle-api, battle-worker, problem-api, problem-worker, judge-api, judge-worker, rating, notification, ai-api, ai-worker, postgres, redis, redpanda, otel-collector`, plus one-off `migrate-*` containers.
 
 ### 23.4 Build and deploy
+
 1. GitHub Actions: lint, typecheck, test → `turbo prune --docker <app>` → multi-stage Dockerfile (pnpm fetch, build, `node:22-slim` runtime, non-root) → `docker buildx --platform linux/arm64` → push to GHCR (tag = git SHA).
 2. Deploy job: SSH to the VM → `docker compose pull` → run `migrate-*` (drizzle-kit migrate) → `docker compose up -d` → smoke test `/health/ready` → roll back to the previous tag on failure.
 3. **Migrations follow expand/contract:** add a column → deploy code that writes both → backfill → switch reads → drop the old column in a later release.
 4. Vercel deploys `apps/web` automatically (root dir `apps/web`, Turbo-aware build). `turbo-ignore` skips builds when web hasn't changed.
 
 ### 23.5 Environment variables
+
 **Common (all services):**
 `NODE_ENV, SERVICE_NAME, PORT, LOG_LEVEL, DATABASE_URL, REDIS_URL, KAFKA_BROKERS, KAFKA_SASL_USERNAME?, KAFKA_SASL_PASSWORD?, KAFKA_SSL?, JWKS_URL, INTERNAL_SERVICE_SECRET, OTEL_EXPORTER_OTLP_ENDPOINT, SENTRY_DSN?`
 
-| Service | Additional |
-|---|---|
-| gateway | `CORS_ORIGINS, SERVICE_URLS_*` (identity, user, battle, problem, judge, rating, notification, ai, realtime) |
-| identity | `JWT_PRIVATE_KEY_PEM, JWT_KID, ACCESS_TOKEN_TTL=900, REFRESH_TOKEN_TTL=2592000, SOCKET_TICKET_TTL=60, APP_URL, REALTIME_PUBLIC_URL` |
-| user | `CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET, CLOUDINARY_FOLDER` |
-| battle | `MATCH_DURATION_SECONDS=1800, CHALLENGE_TTL_SECONDS=30, DECIDE_CAP_SECONDS=600, MATCH_RESERVE_CALLS=40, RECONCILER_INTERVAL_MS=15000, PROBLEM_SERVICE_URL, JUDGE_SERVICE_URL` |
-| problem | `R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET, JUDGE_SERVICE_URL` |
-| judge | `JUDGE0_BASE_URL, JUDGE0_AUTH_MODE=rapidapi\|token\|none, JUDGE0_API_KEY, JUDGE0_RAPIDAPI_HOST, JUDGE0_MODE=callback\|poll, JUDGE0_CALLBACK_BASE_URL, JUDGE0_CALLBACK_SECRET, JUDGE0_DAILY_BUDGET, JUDGE0_RATE_PER_SEC, PROBLEM_SERVICE_URL, BATTLE_SERVICE_URL` |
-| rating | `USER_SERVICE_URL` |
-| notification | `EMAIL_PROVIDER=resend\|brevo\|sendgrid, EMAIL_API_KEY, EMAIL_FROM, APP_URL` |
-| realtime | `NODE_ID, KAFKA_GROUP_PREFIX=realtime` |
-| ai | `AI_ENABLED, ANTHROPIC_API_KEY, AI_MODEL_DEFAULT=claude-haiku-5-5, AI_MODEL_STRONG=claude-sonnet-5-5, AI_DAILY_BUDGET_USD=0.5, EMBEDDING_MODEL=Xenova/bge-small-en-v1.5` |
-| web | `API_ORIGIN, NEXT_PUBLIC_REALTIME_URL, REVALIDATE_SECRET` |
+| Service      | Additional                                                                                                                                                                                                                                                       |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| gateway      | `CORS_ORIGINS, SERVICE_URLS_*` (identity, user, battle, problem, judge, rating, notification, ai, realtime)                                                                                                                                                      |
+| identity     | `JWT_PRIVATE_KEY_PEM, JWT_KID, ACCESS_TOKEN_TTL=900, REFRESH_TOKEN_TTL=2592000, SOCKET_TICKET_TTL=60, APP_URL, REALTIME_PUBLIC_URL`                                                                                                                              |
+| user         | `CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET, CLOUDINARY_FOLDER`                                                                                                                                                                            |
+| battle       | `MATCH_DURATION_SECONDS=1800, CHALLENGE_TTL_SECONDS=30, DECIDE_CAP_SECONDS=600, MATCH_RESERVE_CALLS=40, RECONCILER_INTERVAL_MS=15000, PROBLEM_SERVICE_URL, JUDGE_SERVICE_URL`                                                                                    |
+| problem      | `R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET, JUDGE_SERVICE_URL`                                                                                                                                                                            |
+| judge        | `JUDGE0_BASE_URL, JUDGE0_AUTH_MODE=rapidapi\|token\|none, JUDGE0_API_KEY, JUDGE0_RAPIDAPI_HOST, JUDGE0_MODE=callback\|poll, JUDGE0_CALLBACK_BASE_URL, JUDGE0_CALLBACK_SECRET, JUDGE0_DAILY_BUDGET, JUDGE0_RATE_PER_SEC, PROBLEM_SERVICE_URL, BATTLE_SERVICE_URL` |
+| rating       | `USER_SERVICE_URL`                                                                                                                                                                                                                                               |
+| notification | `EMAIL_PROVIDER=resend\|brevo\|sendgrid, EMAIL_API_KEY, EMAIL_FROM, APP_URL`                                                                                                                                                                                     |
+| realtime     | `NODE_ID, KAFKA_GROUP_PREFIX=realtime`                                                                                                                                                                                                                           |
+| ai           | `AI_ENABLED, ANTHROPIC_API_KEY, AI_MODEL_DEFAULT=claude-haiku-5-5, AI_MODEL_STRONG=claude-sonnet-5-5, AI_DAILY_BUDGET_USD=0.5, EMBEDDING_MODEL=Xenova/bge-small-en-v1.5`                                                                                         |
+| web          | `API_ORIGIN, NEXT_PUBLIC_REALTIME_URL, REVALIDATE_SECRET`                                                                                                                                                                                                        |
 
 Every app validates its env with zod in `src/config/env.ts` and exits if anything is invalid. Keep a `.env.example` per app.
 
 ### 23.6 Optional showcase (not live)
+
 - `infra/k8s`: Helm charts, HPA for API services, **KEDA** ScaledObjects (judge-worker on BullMQ queue depth, realtime on connections), PodDisruptionBudgets.
 - Run once on cloud trial credits for screenshots and k6 results, then tear it down.
 
@@ -1657,6 +1771,7 @@ Script: `scripts/migrate-v1/` (TS). It is **idempotent** (upserts on `legacy_mon
 > Work top to bottom. Each phase must pass its Definition of Done (DoD) before the next one starts, except the frontend tracks, which run in parallel as noted.
 
 ### Phase 0: Foundation (≈1 week)
+
 - [ ] Create the monorepo at the repo root: `pnpm-workspace.yaml`, `turbo.json` (tasks: build, dev, worker, lint, check-types, test, test:int), `tsconfig.base.json`, `packages/config/*` (tsconfig, eslint flat config with `boundaries`, prettier, tailwind).
 - [ ] `packages/contracts` skeleton: envelope, error codes, socket maps.
 - [ ] `libs`: logger, errors, env, ids, http-server (health, error mapper, graceful shutdown, OTel), db (drizzle factory, tx helper, advisory lock), redis (role options, breaker), events (outbox relay, consumer with inbox + DLQ), queue (BullMQ factory, job-outbox dispatcher), idempotency, rate-limit, http-client, testing.
@@ -1667,6 +1782,7 @@ Script: `scripts/migrate-v1/` (TS). It is **idempotent** (upserts on `legacy_mon
 - [ ] `docs/adr/` with ADR-001 … ADR-012 (§26).
 
 **DoD:**
+
 - `pnpm i && docker compose up -d && pnpm dev` runs the template service.
 - `/health/ready` is green.
 - A trace shows up in the local collector.
@@ -1674,6 +1790,7 @@ Script: `scripts/migrate-v1/` (TS). It is **idempotent** (upserts on `legacy_mon
 - CI is green.
 
 ### Phase 1: Identity, user, gateway + web auth (frontend track A starts)
+
 - [ ] identity-service: schema, register, verify, login, refresh rotation with reuse detection, logout(-all), forgot/reset, JWKS, socket ticket, Argon2id + bcrypt rehash, lockout, events, email job outbox.
 - [ ] notification-service (email part): `email-send` worker, provider adapters, `email_log` dedupe.
 - [ ] user-service: profiles from events, search (trigram/prefix), friends (canonical pairs), signed avatar upload, events.
@@ -1681,78 +1798,93 @@ Script: `scripts/migrate-v1/` (TS). It is **idempotent** (upserts on `legacy_mon
 - [ ] `apps/web`: Next.js skeleton, `packages/ui` (shadcn base, tokens, Storybook), auth pages, `middleware.ts`, rewrites, TanStack Query setup, friends and search pages.
 
 **DoD:**
+
 - E2E: register → verification email (fake inbox) → verify → login → refresh rotation → send, accept and remove a friend.
 - Race test: concurrent A→B / B→A friend requests produce one row.
 - Lighthouse on auth pages ≥ 90.
 
 ### Phase 2: Problems + judge (hosted Judge0)
+
 - [ ] problem-service: schema, admin CRUD, test file upload to R2 (with size rules), reference solutions, `problem-calibrate`, publish rules, judge-spec internal API, selection API (idempotent), seen consumer.
 - [ ] judge-service: `language_profiles` bootstrap from `/languages`, `/config_info` validation, submission intake (gates, cache, idempotency), `judge-submit`/`judge-run`/`judge-poll`, callback endpoint (HMAC), staged batching, classification + checkers (`domain/judge-core`), near-miss rerun, IE retry, budget counter, circuit breaker, capacity endpoint, drift job, events.
 - [ ] Postgres-polling degraded mode for the judge worker (§18.1).
 - [ ] Web: admin problem authoring UI (statement editor with markdown preview, test files, reference solutions, calibration report, publish).
 
 **DoD:**
+
 - With fake-judge0: every verdict path (AC/WA/TLE/MLE/RE/CE/OLE/IE) has passing tests.
 - Callback and poll modes both work.
 - Budget exhaustion blocks intake correctly.
 - With real Judge0 (≤ 20 calls): one problem calibrated and judged end to end.
 
 ### Phase 3: Battle + realtime (the core)
+
 - [ ] `domain/match-rules`: challenge and match state machines + winner resolution (earliest-submitted AC; deciding).
 - [ ] battle-service: challenges (create/accept/reject/cancel/expire), start saga + compensation, `match_submissions` read model consumer, winner logic, forfeit, timeout job, reconciler (advisory lock), active match / state / history APIs, participation internal API, tab lease, admission control.
 - [ ] realtime: ticket auth, local rooms, per-node Kafka consumer delivery, presence (per connection + TTL + debounce + friend fan-out), lobby and query HTTP APIs, rate limits, graceful shutdown.
 - [ ] Web: lobby, challenge modal, battle room (CodeMirror, panels, timer with server offset, drafts in IndexedDB, results panel, opponent activity), end screen, rejoin banner, multi-tab alert.
 
 **DoD:**
+
 - Every row of the §12 race matrix has a passing test.
 - E2E: two browsers play a full match: AC win, forfeit, and timeout.
 - Chaos drill 2 (kill a realtime node) passes.
 - Parity checklist items for challenge and match are ticked.
 
 ### Phase 4: Rating, leaderboard, notifications
+
 - [ ] rating-service: stats from registration, ledger application (idempotent), ZSET, top-50/my-rank/friends leaderboard, Postgres fallback, rebuild job, stats history API.
 - [ ] notification-service: in-app notifications from events, unread count, read APIs.
 - [ ] gateway BFF: profile and lobby aggregation.
 - [ ] Web: leaderboard (ISR + rank + presence dots), profile (charts, history), notification centre, on-demand revalidation.
 
 **DoD:**
+
 - Replaying `match.completed` 5× changes coins exactly once.
 - Leaderboard is correct with Redis stopped.
 - Every item in the §3 parity checklist is ticked.
 
 ### Phase 5: Frontend polish and performance (frontend track B)
+
 - [ ] Bundle and performance budgets in CI, Lighthouse CI, virtualised lists, prefetching, animations, accessibility audit, mobile responsiveness, Storybook coverage for `packages/ui`, Playwright visual snapshots.
 
 **DoD:**
+
 - Performance budgets met on all routes.
 - axe audit has no serious issues.
 
 ### Phase 6: Hardening
+
 - [ ] k6 load tests (HTTP + WebSocket) on the VM against fake-judge0. Record p95s in the README.
 - [ ] Chaos drills 1–4 (§18.6), scripted.
 - [ ] Grafana dashboards (judge, matches, sockets, Kafka lag, budgets), alerts (email).
 - [ ] Backups + restore drill. Security pass (OWASP ASVS L1 checklist, dependency audit).
 
 **DoD:**
+
 - Documented results for all drills and load tests.
 - Restore drill succeeds.
 
 ### Phase 7: AI
+
 - [ ] ai-service skeleton, ModelGateway, budget and quotas, local embeddings, ingestion (`content/dsa`, problems, editorials).
 - [ ] Feature 1 (coach) → 2 (hints + leak guard + coin purchase) → 3 (RAG tutor) → 4 (recommendations) → 5 (generation agent) → 6 (anti-cheat flags).
 - [ ] Eval suite + `ai_requests` dashboard.
 
 **DoD:**
+
 - Each feature sits behind a flag.
 - Evals pass their thresholds (hint leak rate < 2% on the golden set; RAG faithfulness ≥ 0.85).
 - Spend stays under the cap in a simulated busy day.
 
 ### Phase 8: Migration and cutover
+
 - [ ] Run the migration script in dry-run against a v1 DB snapshot. Fix discrepancies.
 - [ ] Deploy production compose to the VM, DNS, Vercel.
 - [ ] Final migration, cutover, smoke tests. Archive `Client/` and `Server/` (move to `legacy/` or a tag).
 
 **DoD:**
+
 - v2 is live.
 - Verification counts match.
 - v1 is read-only and backed up.
@@ -1763,21 +1895,21 @@ Script: `scripts/migrate-v1/` (TS). It is **idempotent** (upserts on `legacy_mon
 
 Create one file per ADR in `docs/adr/` with the sections Context, Decision, Consequences, Alternatives.
 
-| ADR | Decision | Key reason | Rejected alternatives |
-|---|---|---|---|
-| 001 | Microservices in a Turborepo + pnpm monorepo | Different scaling profiles, isolation, interview depth | Modular monolith (valid; noted as the honest alternative) |
-| 002 | PostgreSQL, one DB per service; Drizzle | Constraints/CAS/ACID, pgvector, pg_trgm | MongoDB (v1), Prisma |
-| 003 | REST for commands, WebSocket push-only | Idempotency, auth, testability; thin socket nodes | Socket-command RPC (v1) |
-| 004 | Kafka for events + BullMQ for jobs | Different semantics (§10.1) | Kafka only; BullMQ/Redis Streams only |
-| 005 | Transactional outbox + inbox | No dual writes; exactly-once effect | Publishing directly after commit; CDC/Debezium (too heavy for the VM) |
-| 006 | Invariants through DB constraints + CAS; no Redlock | Correctness under GC pauses and clock drift | Redis distributed locks |
-| 007 | Earliest *submitted* AC wins, with a `deciding` state | Fairness under variable judge latency | First judged AC |
-| 008 | Hosted Judge0 API behind `CodeExecutor`; few packed test files; staged batches; callbacks | Owner won't self-host; ₹0 budget | Self-hosted Judge0 / isolate (future swap) |
-| 009 | Realtime delivery through per-node Kafka consumer groups | Redis-independent delivery; no cross-node joins | Socket.IO Redis adapter in the critical path |
-| 010 | EdDSA JWT (15 min) + rotating refresh tokens + socket tickets | Stateless verification, revocation, cross-origin WS | Long-lived JWT in a cookie (v1) |
-| 011 | Next.js App Router on Vercel; CodeMirror 6; TanStack Query + Zustand | SSR/ISR for public pages, small bundles | Vite SPA (v1), Monaco, Redux |
-| 012 | ₹0 hosting: Oracle A1 VM + Vercel + self-hosted PG/Redis/Redpanda | Free; always-on workers | Render/Fly/Koyeb (sleep, no free tier), Neon (pollers burn CU-hours), Upstash (command quota) |
-| 013 | Lobby: live push for online friends only; other online players as a paginated, prefix-searchable pull list (ZSET by recency + lex ZSET) with a count | Removes O(N²) broadcast; the cost is O(page size) | Global live broadcast (v1); live push of every online user |
+| ADR | Decision                                                                                                                                             | Key reason                                             | Rejected alternatives                                                                         |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| 001 | Microservices in a Turborepo + pnpm monorepo                                                                                                         | Different scaling profiles, isolation, interview depth | Modular monolith (valid; noted as the honest alternative)                                     |
+| 002 | PostgreSQL, one DB per service; Drizzle                                                                                                              | Constraints/CAS/ACID, pgvector, pg_trgm                | MongoDB (v1), Prisma                                                                          |
+| 003 | REST for commands, WebSocket push-only                                                                                                               | Idempotency, auth, testability; thin socket nodes      | Socket-command RPC (v1)                                                                       |
+| 004 | Kafka for events + BullMQ for jobs                                                                                                                   | Different semantics (§10.1)                            | Kafka only; BullMQ/Redis Streams only                                                         |
+| 005 | Transactional outbox + inbox                                                                                                                         | No dual writes; exactly-once effect                    | Publishing directly after commit; CDC/Debezium (too heavy for the VM)                         |
+| 006 | Invariants through DB constraints + CAS; no Redlock                                                                                                  | Correctness under GC pauses and clock drift            | Redis distributed locks                                                                       |
+| 007 | Earliest _submitted_ AC wins, with a `deciding` state                                                                                                | Fairness under variable judge latency                  | First judged AC                                                                               |
+| 008 | Hosted Judge0 API behind `CodeExecutor`; few packed test files; staged batches; callbacks                                                            | Owner won't self-host; ₹0 budget                       | Self-hosted Judge0 / isolate (future swap)                                                    |
+| 009 | Realtime delivery through per-node Kafka consumer groups                                                                                             | Redis-independent delivery; no cross-node joins        | Socket.IO Redis adapter in the critical path                                                  |
+| 010 | EdDSA JWT (15 min) + rotating refresh tokens + socket tickets                                                                                        | Stateless verification, revocation, cross-origin WS    | Long-lived JWT in a cookie (v1)                                                               |
+| 011 | Next.js App Router on Vercel; CodeMirror 6; TanStack Query + Zustand                                                                                 | SSR/ISR for public pages, small bundles                | Vite SPA (v1), Monaco, Redux                                                                  |
+| 012 | ₹0 hosting: Oracle A1 VM + Vercel + self-hosted PG/Redis/Redpanda                                                                                    | Free; always-on workers                                | Render/Fly/Koyeb (sleep, no free tier), Neon (pollers burn CU-hours), Upstash (command quota) |
+| 013 | Lobby: live push for online friends only; other online players as a paginated, prefix-searchable pull list (ZSET by recency + lex ZSET) with a count | Removes O(N²) broadcast; the cost is O(page size)      | Global live broadcast (v1); live push of every online user                                    |
 
 ---
 
@@ -1785,7 +1917,7 @@ Create one file per ADR in `docs/adr/` with the sections Context, Decision, Cons
 
 1. **Server-authoritative game state:** v1 trusted the client to declare the winner (§4 #1). v2 decides from judge events (§11.3).
 2. **One active match per user** with a PK table instead of locks; how it resolves A→B / B→A (§11.2, §12).
-3. **Fairness:** earliest *submitted* AC + the `deciding` state; why "first judged" is unfair (§11.3).
+3. **Fairness:** earliest _submitted_ AC + the `deciding` state; why "first judged" is unfair (§11.3).
 4. **Outbox + inbox:** why dual writes are wrong; exactly-once effect on top of at-least-once delivery (§10.3).
 5. **Idempotency everywhere:** HTTP keys, CAS, the ledger's unique key, `jobId`, making Judge0's non-idempotent POST safe (§12, §14.4).
 6. **Timers:** why Redis keyspace notifications fail; BullMQ delayed jobs + a Postgres-leader reconciler (§11.4).
@@ -1806,6 +1938,7 @@ Create one file per ADR in `docs/adr/` with the sections Context, Decision, Cons
 ## 28. Verify before relying (facts that change over time)
 
 Checked on **2026-11-08**. Re-check these before decisions that depend on them:
+
 - Hosted Judge0 quotas and pricing (RapidAPI Basic plan daily limit **not verified**; judge0.com €27/2000/day and €54/5000/day are from a third-party report), `max_submission_batch_size`, the limit maximums from `/config_info`, and how callback bodies encode base64 fields. Handle both encodings.
 - Oracle Always Free A1 limits (2 OCPU / 12 GB since Aug 2026) and the idle-reclamation policy.
 - Neon free plan (100 projects, 1 GB/project, 100 CU-h/project/month), Upstash free (500K commands/month, 256 MB), Aiven free Kafka (5 topics × 2 partitions, 250 KiB/s, powers off when idle).
@@ -1815,6 +1948,7 @@ Checked on **2026-11-08**. Re-check these before decisions that depend on them:
 - How Codeforces and LeetCode judge internally is **not officially documented**. Our design follows the **documented** DOMjudge, Kattis and isolate behaviour.
 
 ### References
+
 - Judge0 CE API docs: https://ce.judge0.com/ · Judge0 plans: https://judge0.com/
 - isolate man page: https://mj.ucw.cz/moe/isolate.1.html
 - DOMjudge judging docs: https://www.domjudge.org/docs/manual/main/judging.html · config ref: https://www.domjudge.org/docs/manual/main/conf_ref.html
@@ -1831,17 +1965,43 @@ Checked on **2026-11-08**. Re-check these before decisions that depend on them:
 
 ## 29. Progress tracker (update as you go)
 
-| Phase | Status | Notes / links |
-|---|---|---|
-| 0 Foundation | ⬜ Not started | |
-| 1 Identity / User / Gateway / Web auth | ⬜ | |
-| 2 Problems + Judge | ⬜ | |
-| 3 Battle + Realtime | ⬜ | |
-| 4 Rating / Leaderboard / Notifications | ⬜ | |
-| 5 Frontend polish | ⬜ | |
-| 6 Hardening | ⬜ | |
-| 7 AI | ⬜ | |
-| 8 Migration + Cutover | ⬜ | |
+| Phase                                  | Status         | Notes / links                                         |
+| -------------------------------------- | -------------- | ----------------------------------------------------- |
+| 0 Foundation                           | 🟡 In progress | Branch `phase-0/foundation`. See "Resume here" below. |
+| 1 Identity / User / Gateway / Web auth | ⬜             |                                                       |
+| 2 Problems + Judge                     | ⬜             |                                                       |
+| 3 Battle + Realtime                    | ⬜             |                                                       |
+| 4 Rating / Leaderboard / Notifications | ⬜             |                                                       |
+| 5 Frontend polish                      | ⬜             |                                                       |
+| 6 Hardening                            | ⬜             |                                                       |
+| 7 AI                                   | ⬜             |                                                       |
+| 8 Migration + Cutover                  | ⬜             |                                                       |
+
+### Resume here (Phase 0 status, 2026-11-08)
+
+**Done and tested** (unit tests + Testcontainers integration tests are green):
+
+- Root config: pnpm workspace, Turborepo, `tsconfig.base.json`, Prettier, ESLint flat config (`@cb/eslint-config`).
+- `@cb/contracts`: error codes, event envelope + `defineEvent`, topics, HTTP and socket shapes.
+- Libraries: `logger`, `errors`, `env`, `ids` (UUIDv7), `resilience` (retry, circuit breaker, timeout), `telemetry` (OTel + trace propagation), `http-server` (Fastify + zod, error mapper, request IDs, health/readiness, graceful shutdown), `http-client`, `db` (drizzle, transaction retry, pg error helpers, advisory-lock leader loop), `redis` (role-based clients, `SafeRedis` with fallback), `events` (outbox writer, relay, inbox consumer, dead letters), `queue` (BullMQ, job outbox, dispatcher), `idempotency` (Idempotency-Key hooks), `rate-limit` (Redis Lua token bucket + memory fallback), `testing` (containers, `createTables`, `waitFor`).
+
+**Remaining for Phase 0** (in this order):
+
+1. `apps/fake-judge0`: Judge0 test double (`/config_info`, `/languages`, single and batch submit/get, callbacks, `@fake` directives, fault injection, stats).
+2. `apps/template-service`: the reference service using every lib (greetings: POST with Idempotency-Key → tx with outbox event + job outbox → relay → Kafka consumer sets `acknowledged_at`; BullMQ job sets `job_processed_at`; drizzle-kit migrations; integration test for the full round trip). Skeleton files exist with `package.json` only.
+3. `infra/docker-compose.yml` (postgres with `init.sql` creating per-service DBs, redis noeviction, redpanda + console, Jaeger `2.23.0`, fake-judge0) and a generic Node app Dockerfile using `turbo prune`.
+4. `scripts/check-deps.mjs` (dependency-direction check by `repo.kind`), `scripts/new-service.mjs`.
+5. `.github/workflows/ci.yml` (format, lint, typecheck, unit, check-deps; integration job with Docker).
+6. `docs/adr/` ADR-001 … ADR-013.
+7. Run the Phase 0 Definition of Done, then open a PR `phase-0/foundation` → `main`.
+
+**Notes:**
+
+- Images pinned: `postgres:16-alpine`, `redis:7-alpine`, `redpandadata/redpanda:v26.2.6`, `jaegertracing/jaeger:2.23.0`.
+- Installed majors are newer than older docs: Vitest 5, ESLint 10, BullMQ 6, `fastify-type-provider-zod` 7, testcontainers 12, zod 4, drizzle-orm 0.45.
+- BullMQ job IDs must match `[A-Za-z0-9_.-]` (no colons), e.g. `match-timeout-<matchId>`. Supersedes the colon-style IDs written in §10.4.
+- The `@cb/http-server` unit test once timed out while all package tests ran in parallel. It passes alone and on rerun. If it recurs, raise the Vitest `testTimeout`.
 
 **Decision log (append-only):**
+
 - 2026-11-08: Plan approved. Hosted Judge0 only; few packed test files with staged batches to minimise quota; ₹0 hosting target; Next.js frontend; Postgres for all transactional data; Kafka + BullMQ; Redis is never a correctness dependency.

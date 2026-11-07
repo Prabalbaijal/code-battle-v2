@@ -23,5 +23,16 @@
     "lint": "eslint .",
     "test": "vitest run --passWithNoTests --exclude \"**/*.int.test.ts\"",
     "test:int": "vitest run --passWithNoTests int.test"
+  },
+  "devDependencies": {
+    "@cb/eslint-config": "workspace:*"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "^1.10.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.83.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.301.0",
+    "@opentelemetry/resources": "^3.1.0",
+    "@opentelemetry/sdk-node": "^0.301.0",
+    "@opentelemetry/semantic-conventions": "^1.45.0"
   }
 }

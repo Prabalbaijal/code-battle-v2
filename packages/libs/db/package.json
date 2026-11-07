@@ -23,5 +23,15 @@
     "lint": "eslint .",
     "test": "vitest run --passWithNoTests --exclude \"**/*.int.test.ts\"",
     "test:int": "vitest run --passWithNoTests int.test"
+  },
+  "devDependencies": {
+    "@cb/eslint-config": "workspace:*",
+    "@cb/testing": "workspace:*",
+    "@types/pg": "^8.23.1"
+  },
+  "dependencies": {
+    "@cb/logger": "workspace:*",
+    "drizzle-orm": "^0.45.4",
+    "pg": "^8.23.1"
   }
 }

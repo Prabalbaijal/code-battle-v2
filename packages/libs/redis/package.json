@@ -23,5 +23,13 @@
     "lint": "eslint .",
     "test": "vitest run --passWithNoTests --exclude \"**/*.int.test.ts\"",
     "test:int": "vitest run --passWithNoTests int.test"
+  },
+  "devDependencies": {
+    "@cb/eslint-config": "workspace:*"
+  },
+  "dependencies": {
+    "@cb/logger": "workspace:*",
+    "@cb/resilience": "workspace:*",
+    "ioredis": "^6.0.0"
   }
 }

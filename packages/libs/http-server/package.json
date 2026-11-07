@@ -23,5 +23,18 @@
     "lint": "eslint .",
     "test": "vitest run --passWithNoTests --exclude \"**/*.int.test.ts\"",
     "test:int": "vitest run --passWithNoTests int.test"
+  },
+  "devDependencies": {
+    "@cb/eslint-config": "workspace:*"
+  },
+  "dependencies": {
+    "@cb/contracts": "workspace:*",
+    "@cb/errors": "workspace:*",
+    "@cb/ids": "workspace:*",
+    "@cb/logger": "workspace:*",
+    "@fastify/helmet": "^13.2.0",
+    "fastify": "^5.12.8",
+    "fastify-type-provider-zod": "^7.0.0",
+    "zod": "^4.6.7"
   }
 }
