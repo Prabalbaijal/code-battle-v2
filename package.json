@@ -1,0 +1,33 @@
+{
+  "name": "code-battle",
+  "private": true,
+  "description": "Code Battle v2 — real-time 1v1 competitive coding (Turborepo, TypeScript, microservices)",
+  "packageManager": "pnpm@10.34.9",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "worker": "turbo run worker",
+    "lint": "turbo run lint",
+    "check-types": "turbo run check-types",
+    "test": "turbo run test",
+    "test:int": "turbo run test:int --concurrency=1",
+    "check-deps": "node scripts/check-deps.mjs",
+    "format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,md,yml,yaml}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,json,md,yml,yaml}\"",
+    "infra:up": "docker compose -f infra/docker-compose.yml up -d",
+    "infra:down": "docker compose -f infra/docker-compose.yml down",
+    "new-service": "node scripts/new-service.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "eslint": "^10.14.0",
+    "prettier": "^3.9.10",
+    "tsx": "^4.23.15",
+    "turbo": "^2.11.10",
+    "typescript": "~5.9.3",
+    "vitest": "^5.1.0"
+  }
+}

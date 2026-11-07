@@ -1,0 +1,13 @@
+packages:
+  - "apps/*"
+  - "packages/contracts"
+  - "packages/domain/*"
+  - "packages/libs/*"
+  - "packages/config/*"
+
+onlyBuiltDependencies:
+  - cpu-features
+  - esbuild
+  - protobufjs
+  - ssh2
+  - msgpackr-extract

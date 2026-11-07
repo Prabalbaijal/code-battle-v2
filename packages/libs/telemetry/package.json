@@ -1,0 +1,27 @@
+{
+  "name": "@cb/telemetry",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "repo": {
+    "kind": "libs"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run --passWithNoTests --exclude \"**/*.int.test.ts\"",
+    "test:int": "vitest run --passWithNoTests int.test"
+  }
+}
