@@ -31,6 +31,25 @@ importers:
         version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@22.20.5)(vite@8.3.6(@types/node@22.20.5)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
   apps/fake-judge0:
+    dependencies:
+      '@cb/env':
+        specifier: workspace:*
+        version: link:../../packages/libs/env
+      '@cb/http-server':
+        specifier: workspace:*
+        version: link:../../packages/libs/http-server
+      '@cb/logger':
+        specifier: workspace:*
+        version: link:../../packages/libs/logger
+      '@cb/telemetry':
+        specifier: workspace:*
+        version: link:../../packages/libs/telemetry
+      fastify:
+        specifier: ^5.12.8
+        version: 5.12.8
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
     devDependencies:
       '@cb/eslint-config':
         specifier: workspace:*

@@ -1,0 +1,85 @@
+/** Judge0 CE constants mirrored by the fake (status ids, languages, config_info). */
+
+export const STATUSES = {
+  1: 'In Queue',
+  2: 'Processing',
+  3: 'Accepted',
+  4: 'Wrong Answer',
+  5: 'Time Limit Exceeded',
+  6: 'Compilation Error',
+  7: 'Runtime Error (SIGSEGV)',
+  8: 'Runtime Error (SIGXFSZ)',
+  9: 'Runtime Error (SIGFPE)',
+  10: 'Runtime Error (SIGABRT)',
+  11: 'Runtime Error (NZEC)',
+  12: 'Runtime Error (Other)',
+  13: 'Internal Error',
+  14: 'Exec Format Error',
+} as const;
+export type StatusId = keyof typeof STATUSES;
+
+/** Mnemonics accepted by `@fake status=...`. */
+export const STATUS_ALIASES: Record<string, StatusId> = {
+  AC: 3,
+  OK: 3,
+  WA: 4,
+  TLE: 5,
+  CE: 6,
+  SEGV: 7,
+  XFSZ: 8,
+  FPE: 9,
+  ABRT: 10,
+  NZEC: 11,
+  RE: 11,
+  OTHER: 12,
+  IE: 13,
+  EXEC: 14,
+};
+
+/** Same ids as Judge0 CE 1.13 for the four languages v1 supported (C++ moved 52 → 54). */
+export const LANGUAGES = [
+  { id: 54, name: 'C++ (GCC 9.2.0)' },
+  { id: 62, name: 'Java (OpenJDK 13.0.1)' },
+  { id: 63, name: 'JavaScript (Node.js 12.14.0)' },
+  { id: 71, name: 'Python (3.8.1)' },
+] as const;
+
+export const CONFIG_INFO = {
+  maintenance_mode: false,
+  enable_wait_result: false,
+  enable_compiler_options: true,
+  allowed_languages_for_compile_options: [],
+  enable_command_line_arguments: true,
+  enable_submission_delete: false,
+  enable_callbacks: true,
+  callbacks_max_tries: 3,
+  callbacks_timeout: 5,
+  enable_additional_files: true,
+  max_queue_size: 100,
+  cpu_time_limit: 2,
+  max_cpu_time_limit: 15,
+  cpu_extra_time: 0.5,
+  max_cpu_extra_time: 5,
+  wall_time_limit: 5,
+  max_wall_time_limit: 20,
+  memory_limit: 128000,
+  max_memory_limit: 256000,
+  stack_limit: 64000,
+  max_stack_limit: 128000,
+  max_processes_and_or_threads: 60,
+  max_max_processes_and_or_threads: 120,
+  enable_per_process_and_thread_time_limit: false,
+  allow_enable_per_process_and_thread_time_limit: true,
+  enable_per_process_and_thread_memory_limit: false,
+  allow_enable_per_process_and_thread_memory_limit: true,
+  max_file_size: 1024,
+  max_max_file_size: 4096,
+  number_of_runs: 1,
+  max_number_of_runs: 20,
+  redirect_stderr_to_stdout: false,
+  max_extract_size: 10240,
+  enable_batched_submissions: true,
+  max_submission_batch_size: 20,
+  enable_network: false,
+  allow_enable_network: false,
+} as const;

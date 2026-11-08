@@ -4,6 +4,7 @@ import { isAppError } from '@cb/errors';
 import { newId } from '@cb/ids';
 import type { Logger } from '@cb/logger';
 import Fastify, {
+  LogController,
   type FastifyBaseLogger,
   type FastifyError,
   type FastifyInstance,
@@ -52,8 +53,8 @@ export async function createHttpServer(opts: CreateHttpServerOptions): Promise<H
     loggerInstance: opts.logger as FastifyBaseLogger,
     bodyLimit: opts.bodyLimit ?? 100 * 1024,
     trustProxy: opts.trustProxy ?? true,
-    disableRequestLogging: true,
-    requestIdLogLabel: 'requestId',
+    // We log one line per request ourselves in onResponse (quieter than Fastify's two lines).
+    logController: new LogController({ disableRequestLogging: true, requestIdLogLabel: 'requestId' }),
     genReqId: (req) => {
       const incoming = req.headers[REQUEST_ID_HEADER];
       return typeof incoming === 'string' && SAFE_REQUEST_ID.test(incoming) ? incoming : newId();
