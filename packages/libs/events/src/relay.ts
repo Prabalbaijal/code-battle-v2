@@ -1,5 +1,6 @@
 import { withTransaction, type Db } from '@cb/db';
 import type { Logger } from '@cb/logger';
+import { runUntraced } from '@cb/telemetry';
 import { asc, inArray, isNull } from 'drizzle-orm';
 import type { Producer } from 'kafkajs';
 import { outbox } from './schema.js';
@@ -23,12 +24,25 @@ export class OutboxRelay {
   private running: Promise<void> | undefined;
   private stopped = true;
   private pendingKick = false;
+  private connecting: Promise<void> | undefined;
   private readonly batchSize: number;
   private readonly intervalMs: number;
 
   constructor(private readonly o: OutboxRelayOptions) {
     this.batchSize = o.batchSize ?? 100;
     this.intervalMs = o.intervalMs ?? 1000;
+    o.producer.on(o.producer.events.DISCONNECT, () => {
+      this.connecting = undefined;
+    });
+  }
+
+  /** Connect on first use; a failed attempt is retried on the next tick. */
+  private ensureConnected(): Promise<void> {
+    this.connecting ??= this.o.producer.connect().catch((err: unknown) => {
+      this.connecting = undefined;
+      throw err;
+    });
+    return this.connecting;
   }
 
   start(): void {
@@ -54,6 +68,7 @@ export class OutboxRelay {
 
   /** Publish one batch; returns the number of events sent. */
   async publishBatch(): Promise<number> {
+    await this.ensureConnected();
     return withTransaction(this.o.db, async (tx) => {
       const rows = await tx
         .select()
@@ -96,15 +111,18 @@ export class OutboxRelay {
 
   private schedule(delay: number) {
     clearTimeout(this.timer);
-    this.timer = setTimeout(() => {
-      this.running = this.drain().finally(() => {
-        this.running = undefined;
-        if (this.stopped) return;
-        const again = this.pendingKick;
-        this.pendingKick = false;
-        this.schedule(again ? 0 : this.intervalMs);
-      });
-    }, delay);
+    // Detached from any request trace; consumers still link to the producer via `traceparent`.
+    this.timer = runUntraced(() =>
+      setTimeout(() => {
+        this.running = this.drain().finally(() => {
+          this.running = undefined;
+          if (this.stopped) return;
+          const again = this.pendingKick;
+          this.pendingKick = false;
+          this.schedule(again ? 0 : this.intervalMs);
+        });
+      }, delay),
+    );
   }
 
   private async drain() {

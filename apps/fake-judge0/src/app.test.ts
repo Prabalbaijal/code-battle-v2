@@ -139,7 +139,8 @@ describe('fake judge0 API', () => {
         callback_url: 'http://judge-service/hooks/judge0/r1?sig=x',
       },
     });
-    await new Promise((r) => setTimeout(r, 100));
+    // poll instead of a fixed sleep: timers can lag when the whole monorepo is testing in parallel
+    for (let i = 0; i < 100 && calls.length < 2; i++) await new Promise((r) => setTimeout(r, 50));
     expect(calls).toHaveLength(2);
     expect(calls[1]!.url).toContain('/hooks/judge0/r1');
     expect(calls[1]!.body.status.id).toBe(5);

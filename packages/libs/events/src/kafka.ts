@@ -29,15 +29,19 @@ export function createKafka(opts: CreateKafkaOptions): Kafka {
   });
 }
 
-/** Idempotent producer, acks=all — the outbox relay is its only user. */
-export async function createProducer(kafka: Kafka): Promise<Producer> {
-  const producer = kafka.producer({
-    idempotent: true,
-    maxInFlightRequests: 1,
+/**
+ * Producer for the outbox relay (acks=all is set per send). Not connected here: the relay connects
+ * lazily and retries, so a service boots and serves traffic even while Kafka is down (plan §18.2).
+ */
+export function createProducer(kafka: Kafka): Producer {
+  return kafka.producer({
+    // Not using kafkajs' idempotent mode: it requires infinite retries, which would block the
+    // relay (holding outbox row locks) whenever Kafka is down. Duplicates from our bounded
+    // retries are dropped by consumer inboxes, so the effect is still exactly-once (ADR-005).
+    idempotent: false,
+    maxInFlightRequests: 1, // keeps per-partition order across retries
     createPartitioner: Partitioners.DefaultPartitioner,
   });
-  await producer.connect();
-  return producer;
 }
 
 /** Create topics if missing (dev/test; prod topics are created by infra). Default 2 partitions (plan §10.2). */

@@ -49,7 +49,7 @@ export async function createInfra(env: Env, logger: Logger): Promise<Infra> {
         }
       : {}),
   });
-  const producer = await createProducer(kafka);
+  const producer = createProducer(kafka);
   const queues: Record<string, Queue> = { [QUEUES.greetingAck]: createQueue(QUEUES.greetingAck, redis) };
   const outbox = createOutboxWriter(env.SERVICE_NAME);
   const relay = new OutboxRelay({ db: db.db, producer, logger });

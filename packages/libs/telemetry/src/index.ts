@@ -1,5 +1,6 @@
-import { context, propagation, trace, SpanStatusCode, type Span } from '@opentelemetry/api';
+import { context, propagation, trace, ROOT_CONTEXT, SpanStatusCode, type Span } from '@opentelemetry/api';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
+import { suppressTracing } from '@opentelemetry/core';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { resourceFromAttributes } from '@opentelemetry/resources';
 import { NodeSDK } from '@opentelemetry/sdk-node';
@@ -36,6 +37,16 @@ export function startTelemetry(opts: { serviceName: string }): TelemetryHandle {
 }
 
 const tracer = () => trace.getTracer('code-battle');
+
+/**
+ * Run `fn` detached from the current trace and with auto-instrumentation suppressed.
+ * Use it to schedule background polling loops (outbox relay, job dispatcher): otherwise a timer
+ * created while handling a request inherits that request's context, so every later poll is
+ * attached to the request's trace, and idle polling floods the tracing backend.
+ */
+export function runUntraced<T>(fn: () => T): T {
+  return context.with(suppressTracing(ROOT_CONTEXT), fn);
+}
 
 /** Serialize the active trace context (W3C traceparent) into a carrier — e.g. Kafka headers, job data. */
 export function injectTraceContext(carrier: Record<string, string> = {}): Record<string, string> {

@@ -33,7 +33,7 @@ beforeAll(async () => {
   h = createDb({ connectionString: pgC.value.url });
   kafka = createKafka({ clientId: 'events-int', brokers: rp.value.brokers, logger });
   await ensureTopics(kafka, [TOPICS.template]);
-  producer = await createProducer(kafka);
+  producer = createProducer(kafka);
 }, 180_000);
 
 afterAll(async () => {

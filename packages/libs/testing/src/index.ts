@@ -1,4 +1,6 @@
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
+import { RedisContainer } from '@testcontainers/redis';
+import { RedpandaContainer } from '@testcontainers/redpanda';
 import { generateDrizzleJson, generateMigration } from 'drizzle-kit/api';
 import pg from 'pg';
 
@@ -16,12 +18,10 @@ export async function createTables(connectionString: string, tables: Record<stri
     await client.end();
   }
 }
-import { RedisContainer } from '@testcontainers/redis';
-import { RedpandaContainer } from '@testcontainers/redpanda';
 
 /** Pinned images — keep in sync with infra/docker-compose.yml. */
 export const IMAGES = {
-  postgres: 'postgres:16-alpine',
+  postgres: 'pgvector/pgvector:0.8.7-pg16-trixie',
   redis: 'redis:7-alpine',
   redpanda: 'redpandadata/redpanda:v26.2.6',
 } as const;

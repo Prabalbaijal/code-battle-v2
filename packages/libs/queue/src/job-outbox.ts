@@ -1,7 +1,7 @@
 import { withTransaction, type Db, type Executor } from '@cb/db';
 import { newId } from '@cb/ids';
 import type { Logger } from '@cb/logger';
-import { currentTraceparent } from '@cb/telemetry';
+import { currentTraceparent, runUntraced } from '@cb/telemetry';
 import type { Queue } from 'bullmq';
 import { asc, inArray, isNull } from 'drizzle-orm';
 import { assertValidJobId } from './queue.js';
@@ -113,19 +113,22 @@ export class JobOutboxDispatcher {
 
   private schedule(delay: number) {
     clearTimeout(this.timer);
-    this.timer = setTimeout(() => {
-      this.running = (async () => {
-        try {
-          while (!this.stopped && (await this.dispatchBatch()) === this.batchSize) {
-            /* drain */
+    // Detached from request traces; jobs carry `_traceparent` so their spans still link up.
+    this.timer = runUntraced(() =>
+      setTimeout(() => {
+        this.running = (async () => {
+          try {
+            while (!this.stopped && (await this.dispatchBatch()) === this.batchSize) {
+              /* drain */
+            }
+          } catch (err) {
+            this.o.logger.warn({ err }, 'job outbox dispatch failed; will retry');
           }
-        } catch (err) {
-          this.o.logger.warn({ err }, 'job outbox dispatch failed; will retry');
-        }
-      })().finally(() => {
-        this.running = undefined;
-        if (!this.stopped) this.schedule(this.intervalMs);
-      });
-    }, delay);
+        })().finally(() => {
+          this.running = undefined;
+          if (!this.stopped) this.schedule(this.intervalMs);
+        });
+      }, delay),
+    );
   }
 }
