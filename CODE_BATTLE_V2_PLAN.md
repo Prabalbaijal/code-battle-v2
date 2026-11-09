@@ -1978,26 +1978,27 @@ Checked on **2026-11-08**. Re-check these before decisions that depend on them:
 | 7 AI                                   | ⬜             |                                                     |
 | 8 Migration + Cutover                  | ⬜             |                                                     |
 
-### Resume here (Phase 1 status, 2026-11-10)
+### Resume here (Phase 1 status, 2026-11-10, part 2)
 
 Phase 0 is merged (PR #1): root config, `@cb/contracts`, the platform libs in `packages/libs`, fake-judge0, template-service, compose stack, CI, ADRs.
 
-**Phase 1 done and tested** (branch `phase-1/identity`):
+**Phase 1 done and tested** (part 1 merged as PR #2; part 2 on branch `phase-1/user-service`):
 
 - `@cb/contracts`: auth DTOs and cookie/CSRF constants (`http/auth.ts`), identity events (`identityEvents`), `email-send` job payload (`jobs/email.ts`).
 - `@cb/auth` (new lib): `TokenSigner` (EdDSA access tokens + socket tickets, key rotation by `kid`), `JwtVerifier` (local or remote JWKS), Fastify hooks `authenticate` / `optionalAuth` / `requireRole` / `requireVerified` / `csrfGuard`.
 - `apps/identity-service` (port 4001): register, verify-email, resend-verification, login (username or email), refresh rotation with reuse detection and a 10 s multi-tab grace, logout, logout-all, forgot/reset password, me, socket-ticket, JWKS. Argon2id + bcrypt rehash, lockout after 10 failures, per-route rate limits, idempotent registration, outbox events, email jobs via job outbox, leader-elected sweeper. 21 integration tests (Testcontainers), including race tests.
 - `apps/notification-service` (port 4003, email part): `email-send` worker, `EmailProvider` with Brevo + fake inbox (`GET /internal/dev/inbox?to=`), `email_log` claim-before-send dedupe, permanent vs retryable errors, daily cap that defers jobs to next UTC midnight, provider rate limit, dead letters without links. 8 integration tests. Verified end to end in dev: register → email in fake inbox → verify → `ev=true` after refresh.
+- `apps/user-service` (port 4002): profiles from `identity.user.registered.v1` (inbox, exactly once), `GET /users/me|:username` (with viewer `relationship`), `PATCH /users/me` (+ `user.profile.updated.v1`), prefix search with keyset pagination + trigram fallback, signed Cloudinary avatar uploads (own `public_id` only), `/internal/users/batch` behind service tokens. Friends: request (mutual request = instant friends), accept, silent reject, cancel, remove, paginated lists, `user.friendship.changed.v1` keyed by `user_low`. 13 integration tests incl. the A→B / B→A race (one row). Verified in dev across identity → Kafka → user-service with real identity tokens via JWKS.
+- `@cb/auth` also has internal service tokens (`signInternalToken`, `createInternalAuth`, HS256, `aud=cb-internal`).
 - `pnpm gen-keys` prints a `JWT_KEYS` value. Services load `.env` in dev (`--env-file-if-exists`); see each app's `.env.example`.
 
 **Remaining for Phase 1** (in this order):
 
-1. user-service: profiles from `identity.user.registered.v1`, search (trigram/prefix), friends (canonical pairs, race test for A→B / B→A), signed avatar upload (Cloudinary credentials from the owner), events.
-2. gateway (port 8080): JWKS verification, RBAC route table, rate limits, proxy routes, CSRF/Origin checks, OpenAPI aggregation at `/docs`.
-3. `apps/web`: Next.js skeleton, `packages/ui`, auth pages, `middleware.ts`, rewrites, TanStack Query, friends and search pages.
-4. Run the Phase 1 DoD (§25), then open a PR `phase-1/identity` → `main`.
+1. gateway (port 8080): JWKS verification, RBAC route table, rate limits, proxy routes, CSRF/Origin checks, OpenAPI aggregation at `/docs`.
+2. `apps/web`: Next.js skeleton, `packages/ui`, auth pages, `middleware.ts`, rewrites, TanStack Query, friends and search pages.
+3. Run the Phase 1 DoD (§25) end to end (register → email → verify → login → refresh → friends), then merge.
 
-Deferred inside identity: an admin endpoint to change roles (emits `identity.user.role_changed.v1`; the event contract exists).
+Deferred: an identity admin endpoint to change roles (the `identity.user.role_changed.v1` contract exists). Avatar uploads need `CLOUDINARY_*` env vars from the owner.
 
 **Notes:**
 
@@ -2011,3 +2012,4 @@ Deferred inside identity: an admin endpoint to change roles (emits `identity.use
 - 2026-11-08: Plan approved. Hosted Judge0 only; few packed test files with staged batches to minimise quota; ₹0 hosting target; Next.js frontend; Postgres for all transactional data; Kafka + BullMQ; Redis is never a correctness dependency.
 - 2026-11-10: Phase 1 identity decisions. Refresh cookie path is `/api/v1/auth` (logout must read it). A rotated refresh token reused within 10 s returns 409 (multi-tab race) instead of revoking the family. Login accepts username or email (v1 used username). Registration does not log the user in (the stored idempotent replay can't re-set cookies); the web app calls login next. No email or token is put on Kafka; dispatched email job rows are purged after 10 min.
 - 2026-11-10: Email provider is **Brevo** (free tier ~300/day shared; third-party sources, re-verify per §28). `email_log` adds `status` (pending/sending/sent/failed), `attempts`, `last_error`, `sent_at`; the recipient is stored only as a hash. Daily cap default 280. `email-send` retry policy lives in `@cb/contracts` (`EMAIL_JOB_RETRY`, 8 attempts, exponential from 5 s).
+- 2026-11-10: user-service decisions. Friend requests by `toUserId`; a mutual request accepts immediately; reject is silent (the requester keeps seeing "pending", the row is `ignored`); added `DELETE /friends/requests/:otherUserId` (cancel). Sending a request needs a verified email and an Idempotency-Key, 30/hour per user. Reserved usernames (e.g. `search`, `admin`) are refused at registration because `/users/:username` shares the path space. A brand-new user's profile can 404 for a moment until the registration event is consumed.

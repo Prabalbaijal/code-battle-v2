@@ -31,6 +31,7 @@ export const ERROR_CODES = [
   'TOKEN_INVALID',
   // social
   'FRIEND_REQUEST_EXISTS',
+  'ALREADY_FRIENDS',
   // battle
   'OPPONENT_OFFLINE',
   'USER_IN_ACTIVE_MATCH',

@@ -19,10 +19,34 @@ export const CSRF_HEADER = 'x-cb-csrf';
 
 export const USERNAME_RE = /^[a-zA-Z0-9_]{3,20}$/;
 
+/** Would collide with routes like `/users/search` or impersonate staff. Compared case-insensitively. */
+export const RESERVED_USERNAMES = new Set([
+  'search',
+  'batch',
+  'admin',
+  'administrator',
+  'root',
+  'system',
+  'support',
+  'help',
+  'api',
+  'internal',
+  'settings',
+  'login',
+  'logout',
+  'register',
+  'signup',
+  'codebattle',
+  'moderator',
+  'null',
+  'undefined',
+]);
+
 export const usernameSchema = z
   .string()
   .trim()
-  .regex(USERNAME_RE, 'username must be 3–20 letters, digits or _');
+  .regex(USERNAME_RE, 'username must be 3–20 letters, digits or _')
+  .refine((u) => !RESERVED_USERNAMES.has(u.toLowerCase()), 'this username is reserved');
 export const emailSchema = z.string().trim().toLowerCase().pipe(z.email()).pipe(z.string().max(254));
 /** Upper bound keeps Argon2 cost predictable; lower bound per OWASP. */
 export const passwordSchema = z.string().min(8, 'password must be at least 8 characters').max(128);
