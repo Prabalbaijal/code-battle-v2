@@ -1,9 +1,9 @@
 packages:
-  - "apps/*"
-  - "packages/contracts"
-  - "packages/domain/*"
-  - "packages/libs/*"
-  - "packages/config/*"
+  - 'apps/*'
+  - 'packages/contracts'
+  - 'packages/domain/*'
+  - 'packages/libs/*'
+  - 'packages/config/*'
 
 onlyBuiltDependencies:
   - cpu-features
