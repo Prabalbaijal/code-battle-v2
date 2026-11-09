@@ -1361,8 +1361,9 @@ interface CodeExecutor {
 
 - **Passwords:** Argon2id (`m=19456 KiB, t=2, p=1`, per OWASP). Migrated bcrypt hashes are verified with bcrypt and **rehashed with Argon2id on successful login**.
 - **Access token:** EdDSA (Ed25519) JWT, **15 min**. Claims `sub, role, ev (email verified), iat, exp, kid`. Kept in an httpOnly Secure SameSite=Lax cookie `cb_at` scoped to the web origin (it travels through the Next rewrite). Services verify it with **JWKS**, so no DB call is needed. Keys are rotated with `kid`.
-- **Refresh token:** an opaque 256-bit random value, stored hashed. **30 days**, rotated on every use. Cookie `cb_rt` has `Path=/api/v1/auth/refresh`.
+- **Refresh token:** an opaque 256-bit random value, stored hashed. **30 days**, rotated on every use. Cookie `cb_rt` has `Path=/api/v1/auth` (refresh **and** logout need it).
   - **Reuse detection:** if a token that was already rotated is used again, revoke the whole `family_id` and force a re-login.
+  - **Multi-tab race:** a rotated token presented again within **10 s** returns `409 CONFLICT` (retry with the new cookie) instead of revoking the family. No tokens are issued on that path, so a thief gains nothing.
 - **CSRF:**
   - SameSite=Lax + a custom header `x-cb-csrf: 1` required on mutations (a simple request can't set it).
   - `Origin` check in the gateway.
@@ -1965,35 +1966,38 @@ Checked on **2026-11-08**. Re-check these before decisions that depend on them:
 
 ## 29. Progress tracker (update as you go)
 
-| Phase                                  | Status         | Notes / links                                         |
-| -------------------------------------- | -------------- | ----------------------------------------------------- |
-| 0 Foundation                           | 🟡 In progress | Branch `phase-0/foundation`. See "Resume here" below. |
-| 1 Identity / User / Gateway / Web auth | ⬜             |                                                       |
-| 2 Problems + Judge                     | ⬜             |                                                       |
-| 3 Battle + Realtime                    | ⬜             |                                                       |
-| 4 Rating / Leaderboard / Notifications | ⬜             |                                                       |
-| 5 Frontend polish                      | ⬜             |                                                       |
-| 6 Hardening                            | ⬜             |                                                       |
-| 7 AI                                   | ⬜             |                                                       |
-| 8 Migration + Cutover                  | ⬜             |                                                       |
+| Phase                                  | Status         | Notes / links                                       |
+| -------------------------------------- | -------------- | --------------------------------------------------- |
+| 0 Foundation                           | ✅ Done        | PR #1 merged 2026-11-10.                            |
+| 1 Identity / User / Gateway / Web auth | 🟡 In progress | Branch `phase-1/identity`. See "Resume here" below. |
+| 2 Problems + Judge                     | ⬜             |                                                     |
+| 3 Battle + Realtime                    | ⬜             |                                                     |
+| 4 Rating / Leaderboard / Notifications | ⬜             |                                                     |
+| 5 Frontend polish                      | ⬜             |                                                     |
+| 6 Hardening                            | ⬜             |                                                     |
+| 7 AI                                   | ⬜             |                                                     |
+| 8 Migration + Cutover                  | ⬜             |                                                     |
 
-### Resume here (Phase 0 status, 2026-11-08)
+### Resume here (Phase 1 status, 2026-11-10)
 
-**Done and tested** (unit tests + Testcontainers integration tests are green):
+Phase 0 is merged (PR #1): root config, `@cb/contracts`, the platform libs in `packages/libs`, fake-judge0, template-service, compose stack, CI, ADRs.
 
-- Root config: pnpm workspace, Turborepo, `tsconfig.base.json`, Prettier, ESLint flat config (`@cb/eslint-config`).
-- `@cb/contracts`: error codes, event envelope + `defineEvent`, topics, HTTP and socket shapes.
-- Libraries: `logger`, `errors`, `env`, `ids` (UUIDv7), `resilience` (retry, circuit breaker, timeout), `telemetry` (OTel + trace propagation), `http-server` (Fastify + zod, error mapper, request IDs, health/readiness, graceful shutdown), `http-client`, `db` (drizzle, transaction retry, pg error helpers, advisory-lock leader loop), `redis` (role-based clients, `SafeRedis` with fallback), `events` (outbox writer, relay, inbox consumer, dead letters), `queue` (BullMQ, job outbox, dispatcher), `idempotency` (Idempotency-Key hooks), `rate-limit` (Redis Lua token bucket + memory fallback), `testing` (containers, `createTables`, `waitFor`).
+**Phase 1 done and tested** (branch `phase-1/identity`):
 
-**Remaining for Phase 0** (in this order):
+- `@cb/contracts`: auth DTOs and cookie/CSRF constants (`http/auth.ts`), identity events (`identityEvents`), `email-send` job payload (`jobs/email.ts`).
+- `@cb/auth` (new lib): `TokenSigner` (EdDSA access tokens + socket tickets, key rotation by `kid`), `JwtVerifier` (local or remote JWKS), Fastify hooks `authenticate` / `optionalAuth` / `requireRole` / `requireVerified` / `csrfGuard`.
+- `apps/identity-service` (port 4001): register, verify-email, resend-verification, login (username or email), refresh rotation with reuse detection and a 10 s multi-tab grace, logout, logout-all, forgot/reset password, me, socket-ticket, JWKS. Argon2id + bcrypt rehash, lockout after 10 failures, per-route rate limits, idempotent registration, outbox events, email jobs via job outbox, leader-elected sweeper. 21 integration tests (Testcontainers), including race tests.
+- `apps/notification-service` (port 4003, email part): `email-send` worker, `EmailProvider` with Brevo + fake inbox (`GET /internal/dev/inbox?to=`), `email_log` claim-before-send dedupe, permanent vs retryable errors, daily cap that defers jobs to next UTC midnight, provider rate limit, dead letters without links. 8 integration tests. Verified end to end in dev: register → email in fake inbox → verify → `ev=true` after refresh.
+- `pnpm gen-keys` prints a `JWT_KEYS` value. Services load `.env` in dev (`--env-file-if-exists`); see each app's `.env.example`.
 
-1. `apps/fake-judge0`: Judge0 test double (`/config_info`, `/languages`, single and batch submit/get, callbacks, `@fake` directives, fault injection, stats).
-2. `apps/template-service`: the reference service using every lib (greetings: POST with Idempotency-Key → tx with outbox event + job outbox → relay → Kafka consumer sets `acknowledged_at`; BullMQ job sets `job_processed_at`; drizzle-kit migrations; integration test for the full round trip). Skeleton files exist with `package.json` only.
-3. `infra/docker-compose.yml` (postgres with `init.sql` creating per-service DBs, redis noeviction, redpanda + console, Jaeger `2.23.0`, fake-judge0) and a generic Node app Dockerfile using `turbo prune`.
-4. `scripts/check-deps.mjs` (dependency-direction check by `repo.kind`), `scripts/new-service.mjs`.
-5. `.github/workflows/ci.yml` (format, lint, typecheck, unit, check-deps; integration job with Docker).
-6. `docs/adr/` ADR-001 … ADR-013.
-7. Run the Phase 0 Definition of Done, then open a PR `phase-0/foundation` → `main`.
+**Remaining for Phase 1** (in this order):
+
+1. user-service: profiles from `identity.user.registered.v1`, search (trigram/prefix), friends (canonical pairs, race test for A→B / B→A), signed avatar upload (Cloudinary credentials from the owner), events.
+2. gateway (port 8080): JWKS verification, RBAC route table, rate limits, proxy routes, CSRF/Origin checks, OpenAPI aggregation at `/docs`.
+3. `apps/web`: Next.js skeleton, `packages/ui`, auth pages, `middleware.ts`, rewrites, TanStack Query, friends and search pages.
+4. Run the Phase 1 DoD (§25), then open a PR `phase-1/identity` → `main`.
+
+Deferred inside identity: an admin endpoint to change roles (emits `identity.user.role_changed.v1`; the event contract exists).
 
 **Notes:**
 
@@ -2005,3 +2009,5 @@ Checked on **2026-11-08**. Re-check these before decisions that depend on them:
 **Decision log (append-only):**
 
 - 2026-11-08: Plan approved. Hosted Judge0 only; few packed test files with staged batches to minimise quota; ₹0 hosting target; Next.js frontend; Postgres for all transactional data; Kafka + BullMQ; Redis is never a correctness dependency.
+- 2026-11-10: Phase 1 identity decisions. Refresh cookie path is `/api/v1/auth` (logout must read it). A rotated refresh token reused within 10 s returns 409 (multi-tab race) instead of revoking the family. Login accepts username or email (v1 used username). Registration does not log the user in (the stored idempotent replay can't re-set cookies); the web app calls login next. No email or token is put on Kafka; dispatched email job rows are purged after 10 min.
+- 2026-11-10: Email provider is **Brevo** (free tier ~300/day shared; third-party sources, re-verify per §28). `email_log` adds `status` (pending/sending/sent/failed), `attempts`, `last_error`, `sent_at`; the recipient is stored only as a hash. Daily cap default 280. `email-send` retry policy lives in `@cb/contracts` (`EMAIL_JOB_RETRY`, 8 attempts, exponential from 5 s).

@@ -60,8 +60,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
-      - name: Build fake-judge0 and template-service images
+      - name: Build service images
         run: |
-          for app in @cb/fake-judge0 @cb/template-service; do
+          for app in @cb/fake-judge0 @cb/template-service @cb/identity-service @cb/notification-service; do
             docker buildx build -f infra/docker/node-app.Dockerfile --build-arg APP=$app --load -t "cb/${app#@cb/}:ci" .
           done

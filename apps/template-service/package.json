@@ -12,12 +12,12 @@
     "lint": "eslint .",
     "test": "vitest run --passWithNoTests --testTimeout=20000 --exclude \"**/*.int.test.ts\"",
     "test:int": "vitest run --passWithNoTests --testTimeout=60000 --hookTimeout=180000 int.test",
-    "dev": "tsx watch --import ./src/instrument.ts src/index.ts",
+    "dev": "tsx watch --env-file-if-exists=.env --import ./src/instrument.ts src/index.ts",
     "start": "node --import ./dist/instrument.js dist/index.js",
-    "worker": "tsx watch --import ./src/instrument.ts src/worker.ts",
+    "worker": "tsx watch --env-file-if-exists=.env --import ./src/instrument.ts src/worker.ts",
     "start:worker": "node --import ./dist/instrument.js dist/worker.js",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "node dist/db/migrate.js"
+    "db:migrate": "node --env-file-if-exists=.env dist/db/migrate.js"
   },
   "devDependencies": {
     "@cb/eslint-config": "workspace:*",

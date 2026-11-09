@@ -28,7 +28,8 @@ export interface CreateWorkerOptions<T> {
   name: string;
   connection: Redis;
   logger: Logger;
-  processor: (job: Job<T>) => Promise<unknown>;
+  /** `token` is the worker lock token (needed for `job.moveToDelayed` + `DelayedError`). */
+  processor: (job: Job<T>, token?: string) => Promise<unknown>;
   concurrency?: number;
   /** Called once a job has exhausted all attempts (write a dead letter, alert, ...). */
   onExhausted?: (job: Job<T>, err: Error) => Promise<void>;
@@ -40,11 +41,11 @@ export function createWorker<T>(opts: CreateWorkerOptions<T>): Worker<T> {
   const log = opts.logger.child({ queue: opts.name });
   const worker = new Worker<T>(
     opts.name,
-    async (job) => {
+    async (job, token) => {
       const traceparent = (job.data as { _traceparent?: string } | null)?._traceparent;
       return withSpan(
         `job ${opts.name}`,
-        () => opts.processor(job),
+        () => opts.processor(job, token),
         traceparent ? { traceparent } : undefined,
         {
           'job.id': job.id ?? '',
