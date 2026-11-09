@@ -1,5 +1,8 @@
 export * from './errors.js';
 export * from './events/envelope.js';
+export * as identityEvents from './events/identity.js';
 export * as templateEvents from './events/template.js';
+export * from './http/auth.js';
 export * from './http/common.js';
+export * from './jobs/email.js';
 export * from './socket/index.js';
