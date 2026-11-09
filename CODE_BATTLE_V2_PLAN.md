@@ -1987,15 +1987,15 @@ Phase 0 is merged (PR #1): root config, `@cb/contracts`, the platform libs in `p
 - `@cb/contracts`: auth DTOs and cookie/CSRF constants (`http/auth.ts`), identity events (`identityEvents`), `email-send` job payload (`jobs/email.ts`).
 - `@cb/auth` (new lib): `TokenSigner` (EdDSA access tokens + socket tickets, key rotation by `kid`), `JwtVerifier` (local or remote JWKS), Fastify hooks `authenticate` / `optionalAuth` / `requireRole` / `requireVerified` / `csrfGuard`.
 - `apps/identity-service` (port 4001): register, verify-email, resend-verification, login (username or email), refresh rotation with reuse detection and a 10 s multi-tab grace, logout, logout-all, forgot/reset password, me, socket-ticket, JWKS. Argon2id + bcrypt rehash, lockout after 10 failures, per-route rate limits, idempotent registration, outbox events, email jobs via job outbox, leader-elected sweeper. 21 integration tests (Testcontainers), including race tests.
+- `apps/notification-service` (port 4003, email part): `email-send` worker, `EmailProvider` with Brevo + fake inbox (`GET /internal/dev/inbox?to=`), `email_log` claim-before-send dedupe, permanent vs retryable errors, daily cap that defers jobs to next UTC midnight, provider rate limit, dead letters without links. 8 integration tests. Verified end to end in dev: register → email in fake inbox → verify → `ev=true` after refresh.
 - `pnpm gen-keys` prints a `JWT_KEYS` value. Services load `.env` in dev (`--env-file-if-exists`); see each app's `.env.example`.
 
 **Remaining for Phase 1** (in this order):
 
-1. notification-service (email part): `email-send` worker, provider adapter (needs an email provider API key from the owner) + a fake inbox for dev/tests, `email_log` dedupe by `dedupeKey`.
-2. user-service: profiles from `identity.user.registered.v1`, search (trigram/prefix), friends (canonical pairs, race test for A→B / B→A), signed avatar upload (Cloudinary credentials from the owner), events.
-3. gateway (port 8080): JWKS verification, RBAC route table, rate limits, proxy routes, CSRF/Origin checks, OpenAPI aggregation at `/docs`.
-4. `apps/web`: Next.js skeleton, `packages/ui`, auth pages, `middleware.ts`, rewrites, TanStack Query, friends and search pages.
-5. Run the Phase 1 DoD (§25), then open a PR `phase-1/identity` → `main`.
+1. user-service: profiles from `identity.user.registered.v1`, search (trigram/prefix), friends (canonical pairs, race test for A→B / B→A), signed avatar upload (Cloudinary credentials from the owner), events.
+2. gateway (port 8080): JWKS verification, RBAC route table, rate limits, proxy routes, CSRF/Origin checks, OpenAPI aggregation at `/docs`.
+3. `apps/web`: Next.js skeleton, `packages/ui`, auth pages, `middleware.ts`, rewrites, TanStack Query, friends and search pages.
+4. Run the Phase 1 DoD (§25), then open a PR `phase-1/identity` → `main`.
 
 Deferred inside identity: an admin endpoint to change roles (emits `identity.user.role_changed.v1`; the event contract exists).
 
@@ -2010,3 +2010,4 @@ Deferred inside identity: an admin endpoint to change roles (emits `identity.use
 
 - 2026-11-08: Plan approved. Hosted Judge0 only; few packed test files with staged batches to minimise quota; ₹0 hosting target; Next.js frontend; Postgres for all transactional data; Kafka + BullMQ; Redis is never a correctness dependency.
 - 2026-11-10: Phase 1 identity decisions. Refresh cookie path is `/api/v1/auth` (logout must read it). A rotated refresh token reused within 10 s returns 409 (multi-tab race) instead of revoking the family. Login accepts username or email (v1 used username). Registration does not log the user in (the stored idempotent replay can't re-set cookies); the web app calls login next. No email or token is put on Kafka; dispatched email job rows are purged after 10 min.
+- 2026-11-10: Email provider is **Brevo** (free tier ~300/day shared; third-party sources, re-verify per §28). `email_log` adds `status` (pending/sending/sent/failed), `attempts`, `last_error`, `sent_at`; the recipient is stored only as a hash. Daily cap default 280. `email-send` retry policy lives in `@cb/contracts` (`EMAIL_JOB_RETRY`, 8 attempts, exponential from 5 s).

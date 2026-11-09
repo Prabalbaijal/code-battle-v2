@@ -16,3 +16,6 @@ export const emailJobSchema = z.object({
   dedupeKey: z.string().min(1).max(200),
 });
 export type EmailJob = z.infer<typeof emailJobSchema>;
+
+/** Producer-side retry policy for `email-send` (plan §10.4): 8 attempts, exponential from 5 s (~21 min). */
+export const EMAIL_JOB_RETRY = { attempts: 8, backoffMs: 5_000 } as const;

@@ -6,7 +6,7 @@ import {
   TokenSigner,
   type AuthHooks,
 } from '@cb/auth';
-import { TOPICS } from '@cb/contracts';
+import { EMAIL_JOB_RETRY, TOPICS } from '@cb/contracts';
 import { createDb, type DbHandle } from '@cb/db';
 import { createKafka, createOutboxWriter, createProducer, OutboxRelay, type OutboxWriter } from '@cb/events';
 import type { Logger } from '@cb/logger';
@@ -73,7 +73,12 @@ export async function createInfra(env: Env, logger: Logger): Promise<Infra> {
       : {}),
   });
   const producer = createProducer(kafka);
-  const queues: Record<string, Queue> = { [QUEUES.email]: createQueue(QUEUES.email, queueRedis) };
+  const queues: Record<string, Queue> = {
+    [QUEUES.email]: createQueue(QUEUES.email, queueRedis, {
+      attempts: EMAIL_JOB_RETRY.attempts,
+      backoff: { type: 'exponential', delay: EMAIL_JOB_RETRY.backoffMs },
+    }),
+  };
   const outbox = createOutboxWriter(env.SERVICE_NAME);
   const relay = new OutboxRelay({ db: db.db, producer, logger });
   const dispatcher = new JobOutboxDispatcher({ db: db.db, logger, queues });
