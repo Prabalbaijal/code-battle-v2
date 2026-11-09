@@ -19,7 +19,8 @@
     "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,json,md,yml,yaml}\"",
     "infra:up": "docker compose -f infra/docker-compose.yml up -d",
     "infra:down": "docker compose -f infra/docker-compose.yml down",
-    "new-service": "node scripts/new-service.mjs"
+    "new-service": "node scripts/new-service.mjs",
+    "gen-keys": "node scripts/gen-keys.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
