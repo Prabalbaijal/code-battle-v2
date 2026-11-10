@@ -1,0 +1,4 @@
+@import '@cb/ui/styles.css';
+
+/* Scan this app's files for Tailwind classes (the ui package scans its own). */
+@source '../';

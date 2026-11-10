@@ -60,10 +60,19 @@ export function registerAuthRoutes(app: HttpServer, d: AuthRouteDeps): void {
       path: REFRESH_COOKIE_PATH,
       expires: s.refresh.expiresAt,
     });
+    // readable by JS on purpose: it only says "a session may exist" (no secret), so the web app can
+    // skip /auth/me for anonymous visitors
+    reply.setCookie(AUTH_COOKIES.session, '1', {
+      ...base,
+      httpOnly: false,
+      path: '/',
+      expires: s.refresh.expiresAt,
+    });
   };
   const clearSessionCookies = (reply: FastifyReply) => {
     reply.clearCookie(AUTH_COOKIES.access, { ...base, path: '/' });
     reply.clearCookie(AUTH_COOKIES.refresh, { ...base, path: REFRESH_COOKIE_PATH });
+    reply.clearCookie(AUTH_COOKIES.session, { ...base, path: '/' });
   };
 
   app.post(
