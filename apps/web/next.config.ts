@@ -1,8 +1,5 @@
 import type { NextConfig } from 'next';
 
-/** Where /api/* is proxied (plan §21.3): same-origin for the browser, so cookies stay first-party. */
-const gateway = (process.env.GATEWAY_URL ?? 'http://localhost:8080').replace(/\/$/, '');
-
 const securityHeaders = [
   { key: 'X-Content-Type-Options', value: 'nosniff' },
   { key: 'X-Frame-Options', value: 'DENY' },
@@ -14,9 +11,6 @@ const config: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   transpilePackages: ['@cb/ui'],
-  async rewrites() {
-    return [{ source: '/api/:path*', destination: `${gateway}/api/:path*` }];
-  },
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }];
   },
