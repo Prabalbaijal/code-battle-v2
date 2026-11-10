@@ -1966,17 +1966,17 @@ Checked on **2026-11-08**. Re-check these before decisions that depend on them:
 
 ## 29. Progress tracker (update as you go)
 
-| Phase                                  | Status  | Notes / links                                   |
-| -------------------------------------- | ------- | ----------------------------------------------- |
-| 0 Foundation                           | ✅ Done | PR #1 merged 2026-11-10.                        |
-| 1 Identity / User / Gateway / Web auth | ✅ Done | PRs #2–#4 merged; web on `phase-1/web` (PR #5). |
-| 2 Problems + Judge                     | ⬜      |                                                 |
-| 3 Battle + Realtime                    | ⬜      |                                                 |
-| 4 Rating / Leaderboard / Notifications | ⬜      |                                                 |
-| 5 Frontend polish                      | ⬜      |                                                 |
-| 6 Hardening                            | ⬜      |                                                 |
-| 7 AI                                   | ⬜      |                                                 |
-| 8 Migration + Cutover                  | ⬜      |                                                 |
+| Phase                                  | Status         | Notes / links                                        |
+| -------------------------------------- | -------------- | ---------------------------------------------------- |
+| 0 Foundation                           | ✅ Done        | PR #1 merged 2026-11-10.                             |
+| 1 Identity / User / Gateway / Web auth | ✅ Done        | PRs #2–#4 merged; web on `phase-1/web` (PR #5).      |
+| 2 Problems + Judge                     | 🟡 In progress | Branch `phase-2/problem-service`. See "Resume here". |
+| 3 Battle + Realtime                    | ⬜             |                                                      |
+| 4 Rating / Leaderboard / Notifications | ⬜             |                                                      |
+| 5 Frontend polish                      | ⬜             |                                                      |
+| 6 Hardening                            | ⬜             |                                                      |
+| 7 AI                                   | ⬜             |                                                      |
+| 8 Migration + Cutover                  | ⬜             |                                                      |
 
 ### Resume here (Phase 1 complete, 2026-11-11)
 
@@ -2003,7 +2003,19 @@ Phase 0 is merged (PR #1): root config, `@cb/contracts`, the platform libs in `p
 - Lighthouse 13.5 on /login, /register, /forgot-password: accessibility 100, best practices 100, SEO 100; performance 99 with the desktop preset. With mobile throttling the median was ~76 on the dev machine, but its CPU benchmark index was ~700 (Lighthouse treats < 1000 as unreliable). Re-check on a CI runner with Lighthouse CI (Phase 5).
 - First-load JS (gzip, module scripts): landing 162 KB, friends 167 KB, form pages 175 KB (react-hook-form ≈ 12 KB). Budget is 170 KB; revisit in Phase 5.
 
-**Next:** Phase 2 (problems + judge), starting with problem-service.
+**Phase 2 progress (2026-11-11, branch `phase-2/problem-service`):**
+
+- `packages/domain/judge-core`: packed test validation (`t` cases, per-case line counts, size rules) and checkers (tokens/float/exact) that report the failing case number; token checkers attribute by token count, so line layout doesn't matter.
+- `apps/problem-service` (port 4004): admin authoring (create, edit, test files 1–4 validated with judge-core, reference solutions, publish with an all-blockers checklist, archive), public view by slug (per-language limits, never hidden tests), `/internal/selections` (idempotent per match, race-safe), `/internal/problems/:id/judge-spec` and `/internal/blobs/sha256/:hex`. Editing tests or verdict-affecting limits bumps `version`, voids calibration and unpublishes. `applyCalibration` is ready for the calibrate job. 11 integration tests.
+- Gateway routes `/api/v1/problems` (optional auth) and `/api/v1/admin/problems` (problem_setter).
+- `pnpm --filter @cb/identity-service set-role <username> <role>` bootstraps roles.
+
+**Remaining for Phase 2** (in this order):
+
+1. judge-service: language profiles from `/languages`, `/config_info` checks, submission intake, staged batches, callbacks + polling, verdict classification (judge-core), budget, breaker, events.
+2. `problem-calibrate` job (problem-service worker) using the judge, then publish end to end.
+3. Web admin authoring UI.
+4. Phase 2 DoD with fake-judge0, then ≤ 20 real Judge0 calls.
 
 Deferred: an identity admin endpoint to change roles (the `identity.user.role_changed.v1` contract exists); avatar upload UI and profile editing page; Storybook for `packages/ui` (Phase 5); E2E in CI (needs the compose stack in CI, Phase 6). Avatar uploads need `CLOUDINARY_*` env vars from the owner.
 
@@ -2022,3 +2034,4 @@ Deferred: an identity admin endpoint to change roles (the `identity.user.role_ch
 - 2026-11-10: user-service decisions. Friend requests by `toUserId`; a mutual request accepts immediately; reject is silent (the requester keeps seeing "pending", the row is `ignored`); added `DELETE /friends/requests/:otherUserId` (cancel). Sending a request needs a verified email and an Idempotency-Key, 30/hour per user. Reserved usernames (e.g. `search`, `admin`) are refused at registration because `/users/:username` shares the path space. A brand-new user's profile can 404 for a moment until the registration event is consumed.
 - 2026-11-11: Gateway decisions. Client IP comes from `TRUSTED_PROXIES` (addresses/CIDRs, e.g. Caddy's Docker network); Fastify now ignores hop counts because they can't prove the peer is a proxy. Internal services keep `trustProxy: true`, so they must never publish ports outside the Docker network. The gateway enforces only the global per-IP limit; route-specific limits live in the owning service. `/api/v1/auth/*` is `public` at the gateway so an expired access cookie can still reach `/auth/refresh`. Redpanda Console moved to port 8081 (8080 is the gateway). Kept Fastify over Express after discussing it with the owner (Express-like API; zod schemas give validation, types and OpenAPI).
 - 2026-11-11: Web decisions. No zod in the browser: it doesn't tree-shake (~45 KB gzip), so `@cb/contracts/constants` holds zod-free rules that both the server's zod schemas and the web's react-hook-form rules use. Forms use react-hook-form (owner's choice) with built-in rules, not the zod resolver. `cb_s` (session hint) is readable by JS so the app skips `/auth/me` for visitors; tokens stay httpOnly. Own Tabs and Avatar replace Radix ones (−10 KB). Next 16 renamed middleware to `src/proxy.ts`. Mutating the session never calls `queryClient.clear()`: it detached mounted observers (found by E2E: the verify banner stayed stale after login).
+- 2026-11-11: Problem decisions. Test packs and reference code are stored as content-addressed blobs in problem_db (`blobs`, key `sha256/<hex>`) behind a `BlobStore` interface instead of R2 (R2 needs a payment method on the account; ₹0 target); the judge fetches them through `/internal/blobs` with a service token. Up to 4 files per problem (ordinal 1–4). Statement edits keep a problem published; test or limit changes bump `version`, clear calibration and unpublish. Publish bumps `version` too. Selection re-checks for a concurrent selection before answering NO_UNSEEN_PROBLEM.

@@ -1,10 +1,12 @@
 export * from './errors.js';
 export * from './events/envelope.js';
 export * as identityEvents from './events/identity.js';
+export * as problemEvents from './events/problem.js';
 export * as templateEvents from './events/template.js';
 export * as userEvents from './events/user.js';
 export * from './http/auth.js';
 export * from './http/common.js';
+export * from './http/problems.js';
 export * from './http/users.js';
 export * from './jobs/email.js';
 export * from './socket/index.js';

@@ -20,6 +20,7 @@ export const envSchema = baseEnvSchema.extend({
   UPSTREAM_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
   SERVICE_URL_IDENTITY: z.string().url().default('http://localhost:4001'),
   SERVICE_URL_USER: z.string().url().default('http://localhost:4002'),
+  SERVICE_URL_PROBLEM: z.string().url().default('http://localhost:4004'),
 });
 
 export type Env = z.infer<typeof envSchema>;
