@@ -42,6 +42,14 @@ export const envSchema = baseEnvSchema
         message: `required when JUDGE0_AUTH=${env.JUDGE0_AUTH}`,
       });
     }
+    // a reserve at or above the budget silently refuses every practice submission and calibration
+    if (env.MATCH_RESERVE_CALLS >= env.JUDGE0_DAILY_BUDGET) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['MATCH_RESERVE_CALLS'],
+        message: `must be below JUDGE0_DAILY_BUDGET (${env.JUDGE0_DAILY_BUDGET}), or practice can never run`,
+      });
+    }
     if (env.JUDGE0_MODE === 'callback' && (!env.JUDGE0_CALLBACK_BASE_URL || !env.JUDGE0_CALLBACK_SECRET)) {
       ctx.addIssue({
         code: 'custom',

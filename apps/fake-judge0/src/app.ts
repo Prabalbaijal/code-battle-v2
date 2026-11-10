@@ -120,6 +120,13 @@ export async function buildFakeJudge0(opts: FakeJudge0Options): Promise<HttpServ
     let time = d.time ?? (d.timePerKb !== undefined ? (Buffer.byteLength(stdin) / 1024) * d.timePerKb : 0.01);
     const stdout = d.stdout ?? runProgram(d.program, stdin, d.wrongCase);
 
+    // Real Judge0 CE runs programs through a forking shell wrapper; too few processes kills it.
+    const forkFails =
+      statusId !== 6 && statusId !== 13 && statusId !== 14 && (input.max_processes_and_or_threads ?? 60) < 2;
+    if (forkFails) {
+      statusId = 11;
+      time = 0.002;
+    }
     if (statusId === 3 && time > cpuLimit) statusId = 5;
     if (statusId === 5) time = Math.min(Math.max(time, cpuLimit), cpuLimit + extra);
     if (statusId === 3 && expected !== undefined && stdout.trimEnd() !== expected.trimEnd()) statusId = 4;
@@ -136,9 +143,13 @@ export async function buildFakeJudge0(opts: FakeJudge0Options): Promise<HttpServ
       result: {
         statusId,
         stdout: compiled ? stdout : null,
-        stderr: d.stderr ?? null,
+        stderr: forkFails ? 'run.sh: fork: retry: Resource temporarily unavailable\n' : (d.stderr ?? null),
         compileOutput: statusId === 6 ? (d.compileOutput ?? 'main.cpp:1:1: error: fake compile error') : null,
-        message: statusId >= 7 && statusId <= 12 ? 'Exited with error status 1' : null,
+        message: forkFails
+          ? 'Exited with error status 254'
+          : statusId >= 7 && statusId <= 12
+            ? 'Exited with error status 1'
+            : null,
         time: compiled ? time : null,
         wallTime: compiled ? (d.wall ?? time + 0.02) : null,
         memory: compiled ? (d.memory ?? 1024) : null,

@@ -55,6 +55,32 @@ describe('fake judge0 API', () => {
     expect(tle.time).toBe('2.500'); // capped at cpu_time_limit + cpu_extra_time
   });
 
+  it('like Judge0 CE, a run with fewer than 2 processes dies in the forking wrapper (RE)', async () => {
+    app = await buildFakeJudge0({ logger });
+    const run = async (max: number) => {
+      const created = await app!.inject({
+        method: 'POST',
+        url: '/submissions',
+        payload: {
+          source_code: '# @fake program=sum-cases',
+          language_id: 71,
+          stdin: '1\n2 3\n',
+          max_processes_and_or_threads: max,
+        },
+      });
+      const { token } = created.json() as { token: string };
+      const r = await app!.inject({
+        method: 'GET',
+        url: `/submissions/${token}?fields=status,stderr,message`,
+      });
+      return r.json() as { status: { id: number }; stderr: string | null; message: string | null };
+    };
+    const one = await run(1);
+    expect([one.status.id, one.message]).toEqual([11, 'Exited with error status 254']);
+    expect(one.stderr).toContain('fork: retry: Resource temporarily unavailable');
+    expect((await run(60)).status.id).toBe(3);
+  });
+
   it('reports In Queue → Processing → final according to delay', async () => {
     let now = 0;
     app = await buildFakeJudge0({ logger, now: () => now });

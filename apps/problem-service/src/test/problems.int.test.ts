@@ -410,7 +410,7 @@ describe('calibration', () => {
     expect(done.publishBlockers).toEqual([]);
     const lim = (lang: string, o: number) =>
       done.limits.find((l) => l.languageKey === lang && l.ordinal === o)?.cpuLimitMs;
-    expect([lim('cpp', 3), lim('python', 3), lim('java', 3)]).toEqual([1400, 2700, 2700]);
+    expect([lim('cpp', 3), lim('python', 3), lim('java', 3)]).toEqual([1400, 2700, 2900]);
     expect(calls.filter((c) => c.problemId === p.id).map((c) => c.cpuLimitMs)).toEqual([15000, 15000, 15000]);
 
     const pub = await call('POST', `/api/v1/admin/problems/${p.id}/publish`, setter);

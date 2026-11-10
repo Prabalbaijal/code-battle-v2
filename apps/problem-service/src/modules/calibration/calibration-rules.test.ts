@@ -31,12 +31,14 @@ describe('calibrate', () => {
     run('b', 'cpp', 'TLE', 3, 'TLE', 15000),
   ];
 
-  it('3× the slowest accepted time, rounded up to 100 ms, at least 1 s; other languages via factors', () => {
+  it('3× the slowest accepted time, rounded up to 100 ms, at least 1 s; others via factors + startup', () => {
     const o = calibrate({ ordinals: [1, 2, 3], runs: [...cppAc, ...brute], instanceMaxMs: 15000 });
     expect(o.problems).toEqual([]);
     expect([limit(o, 'cpp', 1), limit(o, 'cpp', 2), limit(o, 'cpp', 3)]).toEqual([1000, 1000, 1400]); // 30→1000, 360→1000, 1350→1400
-    expect(limit(o, 'python', 3)).toBe(4100); // 450 × 3 (factor) × 3 = 4050 → 4100
-    expect(limit(o, 'java', 3)).toBe(2700);
+    expect(limit(o, 'python', 3)).toBe(5600); // 3 × 450 × 3 (factor) + 1.5 × 1000 (startup) = 5550
+    expect(limit(o, 'java', 3)).toBe(2900); // 3 × 450 × 2 + 1.5 × 100 = 2850
+    // Node needs ~1 s before user code runs, so even a 10 ms C++ file can't get the 1 s minimum
+    expect(limit(o, 'javascript', 1)).toBe(1700); // 3 × 10 × 1.5 + 1.5 × 1050 = 1620
     expect(o.limits).toHaveLength(12);
   });
 
@@ -47,7 +49,7 @@ describe('calibrate', () => {
       run('p', 'python', 'AC', 3, 'AC', 900),
     ];
     const o = calibrate({ ordinals: [1, 2, 3], runs: [...cppAc, ...py, ...brute], instanceMaxMs: 15000 });
-    expect(limit(o, 'python', 3)).toBe(2700); // 900 × 3, not 450 × 3 × 3
+    expect(limit(o, 'python', 3)).toBe(2700); // 900 × 3: its own time already includes startup
   });
 
   it('flags accepted references that fail, and those too close to a clamped limit', () => {

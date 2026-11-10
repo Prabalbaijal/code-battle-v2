@@ -1,4 +1,4 @@
-import { LANGUAGE_KEYS, LANGUAGE_TIME_FACTORS, type LanguageKey } from '@cb/contracts';
+import { LANGUAGE_KEYS, LANGUAGE_STARTUP_MS, LANGUAGE_TIME_FACTORS, type LanguageKey } from '@cb/contracts';
 
 /**
  * Time-limit calibration (plan §14.7, Kattis/Polygon style). Pure: problem-service collects the
@@ -21,6 +21,8 @@ export interface CalibrationOutcome {
 /** Hosted Judge0 is shared and noisy, so the margin is wider than the usual 2–2.5× (plan §14.7). */
 export const MARGIN = 3;
 export const MIN_LIMIT_MS = 1000;
+/** Startup time varies run to run, so derived limits get 1.5× the measured startup. */
+export const STARTUP_ALLOWANCE = 1.5;
 const roundUp100 = (ms: number) => Math.ceil(ms / 100) * 100;
 
 export function calibrate(input: {
@@ -63,9 +65,14 @@ export function calibrate(input: {
       continue;
     }
     for (const lang of LANGUAGE_KEYS) {
+      // An own accepted time already includes the runtime's startup. A time derived from C++
+      // doesn't: on Judge0 CE, Python and Node spend ~1 s CPU before running any user code.
       const own = slowest(lang, ordinal);
-      const base = own ?? cpp * LANGUAGE_TIME_FACTORS[lang];
-      limits.push({ ordinal, languageKey: lang, cpuLimitMs: clamp(MARGIN * base) });
+      const ms =
+        own !== undefined
+          ? MARGIN * own
+          : MARGIN * cpp * LANGUAGE_TIME_FACTORS[lang] + STARTUP_ALLOWANCE * LANGUAGE_STARTUP_MS[lang];
+      limits.push({ ordinal, languageKey: lang, cpuLimitMs: clamp(ms) });
     }
   }
   const limitOf = (lang: LanguageKey, ordinal: number) =>
