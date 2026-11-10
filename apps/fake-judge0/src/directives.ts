@@ -6,7 +6,9 @@ import { STATUS_ALIASES, type StatusId } from './judge0.js';
  *   # @fake program=sum-cases
  *   // @fake status=NZEC stderr="java.lang.OutOfMemoryError"
  * Keys: status (AC|WA|TLE|CE|SEGV|XFSZ|FPE|ABRT|NZEC|RE|OTHER|IE|EXEC), time, wall, memory (KB),
- * delay (ms until finished), stdout, stderr, compile_output, program (echo | sum-cases).
+ * delay (ms until finished), stdout, stderr, compile_output, program (echo | sum-cases),
+ * timePerKb (CPU seconds per KB of stdin, so large tests run slower than small ones),
+ * wrongCase (sum-cases prints a wrong answer for that 1-based case).
  * Quoted values support \n escapes.
  */
 export interface Directives {
@@ -19,6 +21,8 @@ export interface Directives {
   stderr?: string;
   compileOutput?: string;
   program?: 'echo' | 'sum-cases';
+  timePerKb?: number;
+  wrongCase?: number;
 }
 
 const PAIR = /(\w+)=("((?:[^"\\]|\\.)*)"|\S+)/g;
@@ -44,6 +48,8 @@ export function parseDirectives(source: string): Directives {
         case 'wall':
         case 'memory':
         case 'delay':
+        case 'timePerKb':
+        case 'wrongCase':
           d[key] = Number(value);
           break;
         case 'stdout':
@@ -66,7 +72,7 @@ export function parseDirectives(source: string): Directives {
 }
 
 /** Tiny "programs" so judge pipelines can be tested end-to-end with real outputs. */
-export function runProgram(program: Directives['program'], stdin: string): string {
+export function runProgram(program: Directives['program'], stdin: string, wrongCase?: number): string {
   if (program === 'echo') return stdin;
   if (program === 'sum-cases') {
     // "t test cases" format: first line t, then t lines of integers → one sum per line.
@@ -79,9 +85,9 @@ export function runProgram(program: Directives['program'], stdin: string): strin
           l
             .trim()
             .split(/\s+/)
-            .reduce((acc, n) => acc + BigInt(n), 0n)
-            .toString(),
+            .reduce((acc, n) => acc + BigInt(n), 0n),
         )
+        .map((sum, i) => (i + 1 === wrongCase ? sum + 1n : sum).toString())
         .join('\n') + '\n'
     );
   }

@@ -11,7 +11,7 @@ import type { Env } from './config/env.js';
  */
 export type Access = 'public' | 'optional' | 'user' | 'verified' | Role;
 
-export type ServiceName = 'identity' | 'user' | 'problem';
+export type ServiceName = 'identity' | 'user' | 'problem' | 'judge';
 
 export interface RouteRule {
   prefix: string;
@@ -29,12 +29,17 @@ export const ROUTES: RouteRule[] = [
   { prefix: '/api/v1/friends', service: 'user', access: 'user' },
   { prefix: '/api/v1/problems', service: 'problem', access: 'optional' },
   { prefix: '/api/v1/admin/problems', service: 'problem', access: 'problem_setter' },
+  { prefix: '/api/v1/submissions', service: 'judge', access: 'user' },
+  { prefix: '/api/v1/languages', service: 'judge', access: 'public' },
+  // Judge0 callbacks: no user token; each URL carries an HMAC signature checked by judge-service
+  { prefix: '/api/v1/hooks/judge0', service: 'judge', access: 'public' },
 ];
 
 export const serviceUrls = (env: Env): Record<ServiceName, string> => ({
   identity: env.SERVICE_URL_IDENTITY,
   user: env.SERVICE_URL_USER,
   problem: env.SERVICE_URL_PROBLEM,
+  judge: env.SERVICE_URL_JUDGE,
 });
 
 /** Headers only the gateway may set. Anything a client sends with these names is dropped. */

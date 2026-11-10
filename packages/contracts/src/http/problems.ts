@@ -158,6 +158,7 @@ export type SelectionResult = z.infer<typeof selectionResultSchema>;
 export const judgeSpecSchema = z.object({
   problemId: z.uuid(),
   version: z.number(),
+  status: problemStatusSchema,
   checker: z.object({ type: checkerTypeSchema, eps: z.number().nullable() }),
   memoryLimitKb: z.number(),
   outputLimitKb: z.number(),

@@ -117,8 +117,8 @@ export async function buildFakeJudge0(opts: FakeJudge0Options): Promise<HttpServ
     const cpuLimit = input.cpu_time_limit ?? CONFIG_INFO.cpu_time_limit;
     const extra = input.cpu_extra_time ?? CONFIG_INFO.cpu_extra_time;
     let statusId: StatusId = d.status ?? 3;
-    let time = d.time ?? 0.01;
-    const stdout = d.stdout ?? runProgram(d.program, stdin);
+    let time = d.time ?? (d.timePerKb !== undefined ? (Buffer.byteLength(stdin) / 1024) * d.timePerKb : 0.01);
+    const stdout = d.stdout ?? runProgram(d.program, stdin, d.wrongCase);
 
     if (statusId === 3 && time > cpuLimit) statusId = 5;
     if (statusId === 5) time = Math.min(Math.max(time, cpuLimit), cpuLimit + extra);
