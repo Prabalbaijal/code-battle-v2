@@ -1,43 +1,61 @@
 import { z } from 'zod';
-import { DIFFICULTIES, LANGUAGE_KEYS, MAX_CODE_BYTES, SLUG_RE } from '../constants.js';
+import {
+  CHECKER_TYPES,
+  DIFFICULTIES,
+  LANGUAGE_KEYS,
+  MAX_CODE_BYTES,
+  PACK_KINDS,
+  PROBLEM_LIMITS as L,
+  REFERENCE_VERDICTS,
+  SLUG_RE,
+} from '../constants.js';
 import { pageSchema } from './common.js';
 
-export { DIFFICULTIES, LANGUAGE_KEYS, LANGUAGE_TIME_FACTORS, MAX_CODE_BYTES, SLUG_RE } from '../constants.js';
-export type { Difficulty, LanguageKey } from '../constants.js';
+export {
+  CHECKER_TYPES,
+  DIFFICULTIES,
+  LANGUAGE_KEYS,
+  LANGUAGE_TIME_FACTORS,
+  MAX_CODE_BYTES,
+  PACK_KINDS,
+  PROBLEM_LIMITS,
+  REFERENCE_VERDICTS,
+  SLUG_RE,
+} from '../constants.js';
+export type { CheckerType, Difficulty, LanguageKey, PackKind, ReferenceVerdict } from '../constants.js';
 
 export const languageKeySchema = z.enum(LANGUAGE_KEYS);
 export const difficultySchema = z.enum(DIFFICULTIES);
-export const checkerTypeSchema = z.enum(['tokens', 'float', 'exact']);
-export const packKindSchema = z.enum(['sample', 'small', 'large']);
+export const checkerTypeSchema = z.enum(CHECKER_TYPES);
+export const packKindSchema = z.enum(PACK_KINDS);
+export const referenceVerdictSchema = z.enum(REFERENCE_VERDICTS);
 export const problemStatusSchema = z.enum(['draft', 'published', 'archived']);
 
 export const exampleSchema = z.object({
-  input: z.string().max(4000),
-  output: z.string().max(4000),
-  explanation: z.string().max(2000).optional(),
+  input: z.string().max(L.examples.text),
+  output: z.string().max(L.examples.text),
+  explanation: z.string().max(L.examples.explanation).optional(),
 });
 
 /** Judge0's documented maximums (plan §14.1); the judge re-checks against /config_info at boot. */
-export const JUDGE_MAX_MEMORY_KB = 256 * 1024;
-export const JUDGE_MAX_OUTPUT_KB = 4 * 1024;
+export const JUDGE_MAX_MEMORY_KB = L.memoryKb.max;
+export const JUDGE_MAX_OUTPUT_KB = L.outputKb.max;
 
 const problemFields = {
-  slug: z.string().trim().min(3).max(80).regex(SLUG_RE, 'lowercase words joined by hyphens'),
-  title: z.string().trim().min(3).max(120),
-  statementMd: z.string().trim().min(1).max(20_000),
-  inputFormatMd: z.string().trim().min(1).max(5_000),
-  outputFormatMd: z.string().trim().min(1).max(5_000),
-  constraints: z.array(z.string().trim().min(1).max(300)).max(20).default([]),
-  examples: z.array(exampleSchema).min(1).max(10),
+  slug: z.string().trim().min(L.slug.min).max(L.slug.max).regex(SLUG_RE, 'lowercase words joined by hyphens'),
+  title: z.string().trim().min(L.title.min).max(L.title.max),
+  statementMd: z.string().trim().min(1).max(L.statementMd),
+  inputFormatMd: z.string().trim().min(1).max(L.formatMd),
+  outputFormatMd: z.string().trim().min(1).max(L.formatMd),
+  constraints: z
+    .array(z.string().trim().min(1).max(L.constraints.length))
+    .max(L.constraints.count)
+    .default([]),
+  examples: z.array(exampleSchema).min(L.examples.min).max(L.examples.max),
   difficulty: difficultySchema,
-  tags: z.array(z.string().trim().toLowerCase().min(1).max(30)).max(10).default([]),
-  memoryLimitKb: z
-    .number()
-    .int()
-    .min(16 * 1024)
-    .max(JUDGE_MAX_MEMORY_KB)
-    .default(196_608),
-  outputLimitKb: z.number().int().min(64).max(JUDGE_MAX_OUTPUT_KB).default(1024),
+  tags: z.array(z.string().trim().toLowerCase().min(1).max(L.tags.length)).max(L.tags.count).default([]),
+  memoryLimitKb: z.number().int().min(L.memoryKb.min).max(L.memoryKb.max).default(L.memoryKb.default),
+  outputLimitKb: z.number().int().min(L.outputKb.min).max(L.outputKb.max).default(L.outputKb.default),
   checkerType: checkerTypeSchema.default('tokens'),
   floatEps: z.number().positive().max(1).nullable().default(null),
 };
@@ -69,7 +87,7 @@ export type PutTestFileBody = z.infer<typeof putTestFileBodySchema>;
 
 export const referenceSolutionBodySchema = z.object({
   languageKey: languageKeySchema,
-  expectedVerdict: z.enum(['AC', 'TLE', 'WA']),
+  expectedVerdict: referenceVerdictSchema,
   code: z
     .string()
     .min(1)
@@ -108,6 +126,10 @@ export const testFileInfoSchema = z.object({
   sha256: z.string(),
 });
 
+/** Why a problem can't be published yet (all reasons at once, for the admin UI checklist). */
+export const publishBlockerSchema = z.object({ code: z.string(), message: z.string() });
+export type PublishBlocker = z.infer<typeof publishBlockerSchema>;
+
 /** Latest calibration of a problem (admin view). */
 export const calibrationReportSchema = z.object({
   id: z.uuid(),
@@ -118,7 +140,7 @@ export const calibrationReportSchema = z.object({
     z.object({
       referenceId: z.uuid(),
       languageKey: languageKeySchema,
-      expectedVerdict: z.enum(['AC', 'TLE', 'WA']),
+      expectedVerdict: referenceVerdictSchema,
       ordinal: z.number(),
       verdict: z.string().nullable(),
       cpuMs: z.number().nullable(),
@@ -151,6 +173,8 @@ export const adminProblemSchema = publicProblemSchema.extend({
   ),
   limits: z.array(z.object({ ordinal: z.number(), languageKey: languageKeySchema, cpuLimitMs: z.number() })),
   calibration: calibrationReportSchema.nullable(),
+  /** Empty when the problem can be published now (same rules the publish endpoint enforces). */
+  publishBlockers: z.array(publishBlockerSchema),
 });
 export type AdminProblem = z.infer<typeof adminProblemSchema>;
 
@@ -164,9 +188,6 @@ export const adminProblemSummarySchema = z.object({
   updatedAt: z.iso.datetime(),
 });
 export const adminProblemPageSchema = pageSchema(adminProblemSummarySchema);
-
-/** Why a problem can't be published yet (all reasons at once, for the admin UI checklist). */
-export const publishBlockerSchema = z.object({ code: z.string(), message: z.string() });
 
 // ---- internal (service-to-service) ----
 

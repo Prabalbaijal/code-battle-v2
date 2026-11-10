@@ -2,3 +2,53 @@
 
 /* Scan this app's files for Tailwind classes (the ui package scans its own). */
 @source '../';
+
+/* Problem statements rendered by <Markdown> (no typography plugin: a few rules are enough). */
+@layer components {
+  .markdown {
+    @apply grid gap-3 leading-relaxed;
+  }
+  .markdown h1 {
+    @apply text-2xl font-bold tracking-tight;
+  }
+  .markdown h2 {
+    @apply text-xl font-semibold tracking-tight;
+  }
+  .markdown h3 {
+    @apply text-lg font-semibold;
+  }
+  .markdown ul {
+    @apply list-disc pl-6;
+  }
+  .markdown ol {
+    @apply list-decimal pl-6;
+  }
+  .markdown li + li {
+    @apply mt-1;
+  }
+  .markdown a {
+    @apply text-primary underline underline-offset-4;
+  }
+  .markdown code {
+    @apply rounded bg-muted px-1.5 py-0.5 font-mono text-[0.9em];
+  }
+  .markdown pre {
+    @apply overflow-x-auto rounded-md bg-muted p-3 text-sm;
+  }
+  .markdown pre code {
+    @apply bg-transparent p-0;
+  }
+  .markdown blockquote {
+    @apply border-l-2 border-border pl-4 text-muted-foreground;
+  }
+  .markdown table {
+    @apply w-full border-collapse text-sm;
+  }
+  .markdown th,
+  .markdown td {
+    @apply border border-border px-2 py-1 text-left;
+  }
+  .markdown .katex-display {
+    @apply overflow-x-auto overflow-y-hidden py-1;
+  }
+}

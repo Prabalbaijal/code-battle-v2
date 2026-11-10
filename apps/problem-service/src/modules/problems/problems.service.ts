@@ -15,7 +15,7 @@ import type { OutboxWriter } from '@cb/events';
 import { newId } from '@cb/ids';
 import { describePackProblem, validatePack } from '@cb/judge-core';
 import { z } from 'zod';
-import type { ProblemRow } from '../../db/schema.js';
+import type { LimitRow, ProblemRow, ReferenceSolutionRow, TestFileRow } from '../../db/schema.js';
 import type { BlobStore } from '../../lib/blobs.js';
 import { decodeCursor, encodeCursor } from '../../lib/cursor.js';
 import { latestCalibration, toReport } from '../calibration/calibration.service.js';
@@ -36,6 +36,21 @@ export interface ProblemServiceDeps {
 const LIMIT_FIELDS = ['memoryLimitKb', 'outputLimitKb', 'checkerType', 'floatEps'] as const;
 const keyset = z.object({ t: z.string().max(40), id: z.uuid() });
 
+const blockersOf = (
+  p: ProblemRow,
+  files: TestFileRow[],
+  references: ReferenceSolutionRow[],
+  limits: LimitRow[],
+) =>
+  publishBlockers({
+    status: p.status,
+    exampleCount: p.examples.length,
+    files,
+    references,
+    limits,
+    calibratedAt: p.calibratedAt,
+  });
+
 export class ProblemService {
   constructor(private readonly d: ProblemServiceDeps) {}
 
@@ -49,7 +64,7 @@ export class ProblemService {
         examples: body.examples.map((e) => ({ ...e })),
         createdBy: userId,
       });
-      return toAdmin(p, [], [], []);
+      return toAdmin(p, [], [], [], null, blockersOf(p, [], [], []));
     } catch (err) {
       if (isUniqueViolation(err, 'problems_slug_key'))
         throw conflict('SLUG_TAKEN', 'A problem with this slug exists');
@@ -175,14 +190,7 @@ export class ProblemService {
         repo.references(tx, id),
         repo.limits(tx, id),
       ]);
-      const blockers = publishBlockers({
-        status: p.status,
-        exampleCount: p.examples.length,
-        files,
-        references: refs,
-        limits,
-        calibratedAt: p.calibratedAt,
-      });
+      const blockers = blockersOf(p, files, refs, limits);
       if (blockers.length) {
         throw new AppError('PROBLEM_NOT_PUBLISHABLE', 422, 'Problem is not ready to publish', {
           details: blockers,
@@ -311,7 +319,7 @@ export class ProblemService {
       repo.limits(ex, p.id),
     ]);
     const cal = await latestCalibration(ex, p.id);
-    return toAdmin(p, files, refs, limits, cal ? toReport(cal) : null);
+    return toAdmin(p, files, refs, limits, cal ? toReport(cal) : null, blockersOf(p, files, refs, limits));
   }
 
   private async emitUpdated(tx: Tx, p: ProblemRow, change: 'statement' | 'tests' | 'limits' | 'status') {

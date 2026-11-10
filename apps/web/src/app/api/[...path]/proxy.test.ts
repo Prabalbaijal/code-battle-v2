@@ -25,6 +25,7 @@ describe('proxyToGateway', () => {
         cookie: 'cb_at=t',
         'x-cb-csrf': '1',
         connection: 'keep-alive',
+        expect: '100-continue',
       },
       body: JSON.stringify({ toUserId: 'u' }),
     });
@@ -34,7 +35,12 @@ describe('proxyToGateway', () => {
     expect(await res.json()).toEqual({ ok: true });
     expect(seen[0]!.url).toBe('http://gateway:8080/api/v1/friends/requests?x=1');
     const h = seen[0]!.init.headers as Headers;
-    expect([h.get('cookie'), h.get('x-cb-csrf'), h.get('connection')]).toEqual(['cb_at=t', '1', null]);
+    expect([h.get('cookie'), h.get('x-cb-csrf'), h.get('connection'), h.get('expect')]).toEqual([
+      'cb_at=t',
+      '1',
+      null,
+      null,
+    ]);
     expect(new TextDecoder().decode(seen[0]!.init.body as ArrayBuffer)).toBe('{"toUserId":"u"}');
   });
 

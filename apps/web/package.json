@@ -19,11 +19,16 @@
     "@cb/contracts": "workspace:*",
     "@cb/ui": "workspace:*",
     "@tanstack/react-query": "5.105.0",
+    "katex": "0.16.47",
     "lucide-react": "1.62.0",
     "next": "16.4.3",
     "react": "19.3.1",
     "react-dom": "19.3.1",
-    "react-hook-form": "7.91.0"
+    "react-hook-form": "7.91.0",
+    "react-markdown": "10.1.0",
+    "rehype-katex": "7.0.1",
+    "remark-gfm": "4.0.1",
+    "remark-math": "6.0.0"
   },
   "devDependencies": {
     "@cb/eslint-config": "workspace:*",

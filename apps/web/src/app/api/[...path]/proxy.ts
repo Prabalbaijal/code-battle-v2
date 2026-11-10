@@ -15,6 +15,8 @@ const HOP_BY_HOP = new Set([
   'upgrade',
   'host',
   'content-length',
+  // fetch() throws on it; curl sends `expect: 100-continue` for bodies over 1 MB
+  'expect',
 ]);
 
 /** fetch() already decoded the body, so these no longer describe it. Cookies are re-added below. */
