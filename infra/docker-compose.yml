@@ -64,7 +64,7 @@ services:
     image: redpandadata/console:v3.14.0
     environment:
       KAFKA_BROKERS: redpanda:9092
-    ports: ['8080:8080']
+    ports: ['8081:8080'] # 8080 is the gateway
     depends_on:
       redpanda: { condition: service_healthy }
 

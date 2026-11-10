@@ -12,6 +12,7 @@ export async function buildApp(infra: Infra): Promise<HttpServer> {
     logger: infra.logger,
     readiness: { db: infra.db.ping, redis: infra.safeRedis.ping },
     critical: ['db'],
+    openapi: { title: 'identity-service', version: '1.0.0' },
   });
   await app.register(cookie);
 

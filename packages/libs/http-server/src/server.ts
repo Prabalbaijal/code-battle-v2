@@ -1,4 +1,5 @@
 import helmet from '@fastify/helmet';
+import swagger from '@fastify/swagger';
 import { REQUEST_ID_HEADER, type ErrorBody, type ErrorCode, type Health } from '@cb/contracts';
 import { isAppError } from '@cb/errors';
 import { newId } from '@cb/ids';
@@ -12,6 +13,8 @@ import Fastify, {
 } from 'fastify';
 import {
   hasZodFastifySchemaValidationErrors,
+  jsonSchemaTransform,
+  jsonSchemaTransformObject,
   serializerCompiler,
   validatorCompiler,
   type ZodTypeProvider,
@@ -37,9 +40,21 @@ export interface CreateHttpServerOptions {
   readiness?: Record<string, ReadinessCheck>;
   /** Checks whose failure makes the service not ready (503). Others only mark it "degraded". */
   critical?: string[];
-  /** Trust X-Forwarded-* (behind gateway/Caddy). */
-  trustProxy?: boolean;
+  /**
+   * Trust X-Forwarded-* (default true: internal services sit behind the gateway, which sets it).
+   * A string trusts only those proxy addresses/CIDRs (e.g. "loopback, 172.18.0.0/16"); the
+   * internet-facing gateway uses this so clients cannot spoof X-Forwarded-For.
+   */
+  trustProxy?: boolean | string;
+  /**
+   * Generate an OpenAPI 3 document from the routes' zod schemas and serve it at GET /openapi.json
+   * (the gateway aggregates these at /docs). Routes registered after creation are included.
+   */
+  openapi?: { title: string; version?: string; description?: string };
 }
+
+/** Routes that never appear in OpenAPI documents. */
+const HIDDEN = { schema: { hide: true } } as const;
 
 const SAFE_REQUEST_ID = /^[A-Za-z0-9._:-]{1,128}$/;
 const QUIET_ROUTES = new Set(['/health/live', '/health/ready']);
@@ -64,6 +79,22 @@ export async function createHttpServer(opts: CreateHttpServerOptions): Promise<H
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
   await app.register(helmet, { global: true });
+
+  if (opts.openapi) {
+    await app.register(swagger, {
+      openapi: {
+        openapi: '3.0.3',
+        info: {
+          title: opts.openapi.title,
+          version: opts.openapi.version ?? '1.0.0',
+          ...(opts.openapi.description ? { description: opts.openapi.description } : {}),
+        },
+      },
+      transform: jsonSchemaTransform,
+      transformObject: jsonSchemaTransformObject,
+    });
+    app.get('/openapi.json', HIDDEN, async () => app.swagger());
+  }
 
   app.addHook('onSend', async (req, reply) => {
     reply.header(REQUEST_ID_HEADER, req.id);
@@ -113,9 +144,9 @@ export async function createHttpServer(opts: CreateHttpServerOptions): Promise<H
     return reply.code(500).send(errorBody('INTERNAL_ERROR', 'Internal error', req.id));
   });
 
-  app.get('/health/live', async () => ({ status: 'ok' as const, checks: {} }) satisfies Health);
+  app.get('/health/live', HIDDEN, async () => ({ status: 'ok' as const, checks: {} }) satisfies Health);
 
-  app.get('/health/ready', async (_req, reply) => {
+  app.get('/health/ready', HIDDEN, async (_req, reply) => {
     const checks: Health['checks'] = {};
     const entries = Object.entries(opts.readiness ?? {});
     await Promise.all(
