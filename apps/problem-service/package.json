@@ -1,0 +1,46 @@
+{
+  "name": "@cb/problem-service",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "repo": {
+    "kind": "app"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run --passWithNoTests --testTimeout=20000 --exclude \"**/*.int.test.ts\"",
+    "test:int": "vitest run --passWithNoTests --testTimeout=60000 --hookTimeout=180000 int.test",
+    "dev": "tsx watch --env-file-if-exists=.env --import ./src/instrument.ts src/index.ts",
+    "start": "node --import ./dist/instrument.js dist/index.js",
+    "worker": "tsx watch --env-file-if-exists=.env --import ./src/instrument.ts src/worker.ts",
+    "start:worker": "node --import ./dist/instrument.js dist/worker.js",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node --env-file-if-exists=.env dist/db/migrate.js"
+  },
+  "devDependencies": {
+    "@cb/eslint-config": "workspace:*",
+    "@cb/testing": "workspace:*",
+    "drizzle-kit": "^0.31.11"
+  },
+  "dependencies": {
+    "@cb/auth": "workspace:*",
+    "@cb/contracts": "workspace:*",
+    "@cb/db": "workspace:*",
+    "@cb/env": "workspace:*",
+    "@cb/errors": "workspace:*",
+    "@cb/events": "workspace:*",
+    "@cb/http-server": "workspace:*",
+    "@cb/idempotency": "workspace:*",
+    "@cb/ids": "workspace:*",
+    "@cb/judge-core": "workspace:*",
+    "@cb/logger": "workspace:*",
+    "@cb/queue": "workspace:*",
+    "@cb/telemetry": "workspace:*",
+    "drizzle-orm": "^0.45.4",
+    "fastify": "^5.12.8",
+    "kafkajs": "^2.2.4",
+    "zod": "^4.6.7"
+  }
+}

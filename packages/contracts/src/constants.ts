@@ -61,3 +61,15 @@ export const PASSWORD_MIN_LENGTH = 8;
 export const PASSWORD_MAX_LENGTH = 128;
 export const FULLNAME_MAX_LENGTH = 60;
 export const EMAIL_MAX_LENGTH = 254;
+
+/** Languages offered in battles (plan §14.1). Judge0 ids are resolved from /languages at boot. */
+export const LANGUAGE_KEYS = ['cpp', 'java', 'python', 'javascript'] as const;
+export type LanguageKey = (typeof LANGUAGE_KEYS)[number];
+
+export const DIFFICULTIES = ['Easy', 'Medium', 'Hard'] as const;
+export type Difficulty = (typeof DIFFICULTIES)[number];
+
+/** Problem slugs: lowercase words joined by hyphens, e.g. "two-sum". */
+export const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+/** Source code limit (plan §7.3: submissions 64 KB). */
+export const MAX_CODE_BYTES = 64 * 1024;

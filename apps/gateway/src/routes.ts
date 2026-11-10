@@ -11,7 +11,7 @@ import type { Env } from './config/env.js';
  */
 export type Access = 'public' | 'optional' | 'user' | 'verified' | Role;
 
-export type ServiceName = 'identity' | 'user';
+export type ServiceName = 'identity' | 'user' | 'problem';
 
 export interface RouteRule {
   prefix: string;
@@ -27,11 +27,14 @@ export const ROUTES: RouteRule[] = [
   { prefix: '/api/v1/auth', service: 'identity', access: 'public' },
   { prefix: '/api/v1/users', service: 'user', access: 'optional' },
   { prefix: '/api/v1/friends', service: 'user', access: 'user' },
+  { prefix: '/api/v1/problems', service: 'problem', access: 'optional' },
+  { prefix: '/api/v1/admin/problems', service: 'problem', access: 'problem_setter' },
 ];
 
 export const serviceUrls = (env: Env): Record<ServiceName, string> => ({
   identity: env.SERVICE_URL_IDENTITY,
   user: env.SERVICE_URL_USER,
+  problem: env.SERVICE_URL_PROBLEM,
 });
 
 /** Headers only the gateway may set. Anything a client sends with these names is dropped. */

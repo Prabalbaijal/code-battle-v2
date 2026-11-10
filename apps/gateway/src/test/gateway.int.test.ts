@@ -65,6 +65,9 @@ async function fakeUpstream(name: 'identity' | 'user'): Promise<FastifyInstance>
     app.all('/api/v1/friends', echo);
     app.all('/api/v1/friends/*', echo);
     app.all('/internal/*', echo);
+    app.all('/api/v1/problems/*', echo);
+    app.all('/api/v1/admin/problems', echo);
+    app.all('/api/v1/admin/problems/*', echo);
   }
   await app.listen({ host: '127.0.0.1', port: 0 });
   return app;
@@ -84,6 +87,7 @@ async function gateway(overrides: Record<string, string> = {}): Promise<HttpServ
     TRUSTED_PROXIES: 'loopback',
     SERVICE_URL_IDENTITY: urlOf(identity),
     SERVICE_URL_USER: urlOf(users),
+    SERVICE_URL_PROBLEM: urlOf(users),
     ...overrides,
   });
   const app = await buildGateway({
@@ -210,6 +214,33 @@ describe('proxying', () => {
 });
 
 describe('access rules', () => {
+  it('role routes: problem authoring needs problem_setter (or admin) at the edge', async () => {
+    const before = hits.user;
+    const asUser = await userToken();
+    const r = await gw.inject({
+      method: 'GET',
+      url: '/api/v1/admin/problems',
+      headers: { authorization: `Bearer ${asUser.token}`, 'x-forwarded-for': ip() },
+    });
+    expect(r.statusCode).toBe(403);
+    expect(hits.user).toBe(before);
+    for (const role of ['problem_setter', 'admin'] as const) {
+      const { token } = await signer.signAccess({ userId: randomUUID(), role, emailVerified: true }, 900);
+      const ok = await gw.inject({
+        method: 'GET',
+        url: '/api/v1/admin/problems',
+        headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': ip() },
+      });
+      expect([ok.statusCode, (ok.json() as Echo).headers['x-user-role']]).toEqual([200, role]);
+    }
+    const pub = await gw.inject({
+      method: 'GET',
+      url: '/api/v1/problems/two-sum',
+      headers: { 'x-forwarded-for': ip() },
+    });
+    expect(pub.statusCode).toBe(200);
+  });
+
   it('"user" routes: 401 before reaching the service without a valid token', async () => {
     const before = hits.user;
     expect(
@@ -372,7 +403,10 @@ describe('rate limits and failures', () => {
     expect(r.statusCode).toBe(503);
     expect(r.json()).toMatchObject({ error: { code: 'SERVICE_UNAVAILABLE', requestId: expect.any(String) } });
     const ups = await dead.inject({ method: 'GET', url: '/health/upstreams' });
-    expect([ups.statusCode, ups.json().checks]).toEqual([503, { identity: 'ok', user: 'down' }]);
+    expect([ups.statusCode, ups.json().checks]).toEqual([
+      503,
+      { identity: 'ok', user: 'down', problem: 'ok' },
+    ]);
     expect((await gw.inject({ method: 'GET', url: '/health/upstreams' })).statusCode).toBe(200);
   });
 });

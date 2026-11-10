@@ -17,7 +17,8 @@
     "worker": "tsx watch --env-file-if-exists=.env --import ./src/instrument.ts src/worker.ts",
     "start:worker": "node --import ./dist/instrument.js dist/worker.js",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "node --env-file-if-exists=.env dist/db/migrate.js"
+    "db:migrate": "node --env-file-if-exists=.env dist/db/migrate.js",
+    "set-role": "node --env-file-if-exists=.env dist/scripts/set-role.js"
   },
   "devDependencies": {
     "@cb/eslint-config": "workspace:*",
