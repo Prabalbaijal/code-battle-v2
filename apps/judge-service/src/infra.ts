@@ -13,6 +13,7 @@ import type { Env } from './config/env.js';
 import { Judge0HttpExecutor, type CodeExecutor } from './judge0/executor.js';
 import { LANGUAGE_RULES, resolveLanguages } from './judge0/languages.js';
 import { judgingRepository } from './modules/judging/judging.repository.js';
+import { CalibrationService } from './modules/calibrations/calibrations.service.js';
 import { JudgingService } from './modules/judging/judging.service.js';
 import { SubmissionService } from './modules/submissions/submissions.service.js';
 import { ProblemServiceSource, type ProblemSource } from './problems/problem-source.js';
@@ -39,6 +40,7 @@ export interface Infra {
   limits: { submit: RateLimiter; run: RateLimiter };
   judging: JudgingService;
   submissions: SubmissionService;
+  calibrations: CalibrationService;
   /** Read Judge0's limits and languages; upsert language profiles. Retries are the caller's job. */
   bootstrapJudge0(): Promise<void>;
   close(): Promise<void>;
@@ -150,6 +152,15 @@ export async function createInfra(env: Env, logger: Logger, opts: InfraOptions =
     afterCommit,
   });
 
+  const calibrations = new CalibrationService({
+    db: db.db,
+    problems,
+    judging,
+    submissions,
+    matchReserveCalls: env.MATCH_RESERVE_CALLS,
+    afterCommit,
+  });
+
   return {
     env,
     logger,
@@ -169,6 +180,7 @@ export async function createInfra(env: Env, logger: Logger, opts: InfraOptions =
     limits,
     judging,
     submissions,
+    calibrations,
     async bootstrapJudge0() {
       const info = await executor.info();
       const resolved = resolveLanguages(info.languages);

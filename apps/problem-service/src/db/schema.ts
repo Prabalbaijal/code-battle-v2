@@ -154,6 +154,47 @@ export const calibrationRuns = pgTable('calibration_runs', {
   ranAt: timestamp('ran_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+/** One calibration attempt of a problem version (plan §14.7): its runs, limits and problems. */
+export const calibrations = pgTable(
+  'calibrations',
+  {
+    id: uuid('id').primaryKey(),
+    problemId: uuid('problem_id')
+      .notNull()
+      .references(() => problems.id),
+    version: integer('version').notNull(),
+    status: text('status', { enum: ['pending', 'running', 'passed', 'failed'] }).notNull(),
+    runs: jsonb('runs')
+      .$type<CalibrationRunJson[]>()
+      .notNull()
+      .default(sql`'[]'`),
+    limits: jsonb('limits')
+      .$type<{ ordinal: number; languageKey: string; cpuLimitMs: number }[]>()
+      .notNull()
+      .default(sql`'[]'`),
+    problems: jsonb('problems')
+      .$type<{ code: string; message: string }[]>()
+      .notNull()
+      .default(sql`'[]'`),
+    requestedBy: uuid('requested_by').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+  },
+  (t) => [
+    index('calibrations_problem_idx').on(t.problemId, t.createdAt),
+    check('calibrations_status', sql`${t.status} in ('pending','running','passed','failed')`),
+  ],
+);
+
+export interface CalibrationRunJson {
+  referenceId: string;
+  languageKey: string;
+  expectedVerdict: 'AC' | 'TLE' | 'WA';
+  ordinal: number;
+  verdict: string | null;
+  cpuMs: number | null;
+}
+
 export const userProblemSeen = pgTable(
   'user_problem_seen',
   {
@@ -187,3 +228,4 @@ export type ProblemRow = typeof problems.$inferSelect;
 export type TestFileRow = typeof testFiles.$inferSelect;
 export type ReferenceSolutionRow = typeof referenceSolutions.$inferSelect;
 export type LimitRow = typeof problemLanguageLimits.$inferSelect;
+export type CalibrationRow = typeof calibrations.$inferSelect;

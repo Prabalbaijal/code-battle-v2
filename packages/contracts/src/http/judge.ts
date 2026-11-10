@@ -76,3 +76,36 @@ export const capacitySchema = z.object({
   breaker: z.enum(['closed', 'open', 'half_open']),
 });
 export type Capacity = z.infer<typeof capacitySchema>;
+
+// ---- internal: calibration runs (problem-service → judge-service, plan §14.7) ----
+
+/** Run a reference solution on every file (no fail-fast), with a generous CPU limit. */
+export const calibrationRequestSchema = z.object({
+  problemId: z.uuid(),
+  languageKey: languageKeySchema,
+  code: z.string().min(1).refine(withinBytes(MAX_CODE_BYTES), 'code too large'),
+  /** CPU limit for every file; capped at the Judge0 instance maximum. */
+  cpuLimitMs: z.number().int().min(100).max(60_000),
+  /** Idempotency: the same key returns the same calibration run. */
+  requestKey: z.string().min(1).max(200),
+});
+export type CalibrationRequest = z.infer<typeof calibrationRequestSchema>;
+
+export const calibrationResultSchema = z.object({
+  id: z.uuid(),
+  status: submissionStatusSchema,
+  problemVersion: z.number(),
+  /** The CPU limit actually used (after the instance cap). */
+  cpuLimitMs: z.number(),
+  files: z.array(
+    z.object({
+      ordinal: z.number(),
+      kind: packKindSchema,
+      verdict: verdictSchema.nullable(),
+      cpuMs: z.number().nullable(),
+      memKb: z.number().nullable(),
+      failedCase: z.number().nullable(),
+    }),
+  ),
+});
+export type CalibrationResult = z.infer<typeof calibrationResultSchema>;

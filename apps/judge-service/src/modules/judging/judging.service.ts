@@ -217,18 +217,20 @@ export class JudgingService {
     return want.length === got.length && timingSafeEqual(want, got);
   }
 
-  private stageFiles(spec: Spec, mode: 'submit' | 'run', stage: number): SpecFile[] {
+  private stageFiles(spec: Spec, mode: SubmissionRow['mode'], stage: number): SpecFile[] {
+    // calibration needs every file's time: one stage, no fail-fast
+    if (mode === 'calibrate') return stage === 1 ? spec.files : [];
     if (mode === 'run') return stage === 1 ? spec.files.filter((f) => f.kind === 'sample') : [];
     const first = spec.files.filter((f) => f.kind !== 'large');
     if (!first.length) return stage === 1 ? spec.files : [];
     return stage === 1 ? first : spec.files.filter((f) => f.kind === 'large');
   }
 
-  private limitsFor(spec: Spec, file: SpecFile, lang: string): RequestLimits {
+  private limitsFor(spec: Spec, file: SpecFile, lang: string, overrideMs?: number | null): RequestLimits {
     const p = this.profiles.get(lang);
     const factor = Number(p?.defaultTimeFactor ?? 1);
     return requestLimits({
-      cpuLimitMs: file.cpuLimitMs[lang as LanguageKey] ?? Math.round(DEFAULT_CPU_MS * factor),
+      cpuLimitMs: overrideMs ?? file.cpuLimitMs[lang as LanguageKey] ?? Math.round(DEFAULT_CPU_MS * factor),
       memoryLimitKb: spec.memoryLimitKb,
       outputLimitKb: spec.outputLimitKb,
       lang: { memOverheadKb: p?.memOverheadKb ?? 0, maxProcesses: p?.maxProcesses ?? 1 },
@@ -264,7 +266,7 @@ export class JudgingService {
           languageId: profile.judge0LanguageId,
           sourceCode: sub.code,
           stdin,
-          limits: this.limitsFor(spec, file, sub.languageKey),
+          limits: this.limitsFor(spec, file, sub.languageKey, sub.cpuLimitOverrideMs),
           ...(this.d.mode === 'callback' && this.d.callbackBaseUrl
             ? {
                 callbackUrl: `${this.d.callbackBaseUrl.replace(/\/$/, '')}/api/v1/hooks/judge0/${run.id}?sig=${this.signature(run.id)}`,
@@ -312,7 +314,7 @@ export class JudgingService {
         return judgeFile(
           resultFromRow(r),
           fileSpec,
-          this.limitsFor(spec, file, sub.languageKey),
+          this.limitsFor(spec, file, sub.languageKey, sub.cpuLimitOverrideMs),
           spec.checker,
           r.attempt,
         );
@@ -321,9 +323,13 @@ export class JudgingService {
       const current = judged.filter((r) => r.stage === sub.stage);
       const previous = judged.filter((r) => r.stage < sub.stage);
 
+      const measuring = sub.mode === 'calibrate';
       const decision = decide({
         files: await Promise.all(
-          current.map(async (r) => ({ ordinal: r.fileOrdinal, outcome: await outcome(r) })),
+          current.map(async (r) => {
+            const o = await outcome(r);
+            return { ordinal: r.fileOrdinal, outcome: o && measuring ? { ...o, nearMiss: false } : o };
+          }),
         ),
         previous: (await Promise.all(previous.map(outcome))).filter((o): o is FileOutcome => !!o),
         hasNextStage: sub.stage === 1 && this.stageFiles(spec, sub.mode, 2).length > 0,
@@ -381,6 +387,33 @@ export class JudgingService {
     if (dispatch) await this.sync(submissionId, 0);
   }
 
+  /** Latest outcome per file (calibration report). Undefined outcome = not finished. */
+  async fileOutcomes(
+    sub: SubmissionRow,
+  ): Promise<{ ordinal: number; kind: SpecFile['kind']; outcome?: FileOutcome }[]> {
+    const spec = await this.d.problems.spec(sub.problemId);
+    if (!spec) return [];
+    const latest = latestRuns(await repo.runs(this.d.db, sub.id));
+    return Promise.all(
+      spec.files.map(async (file) => {
+        const r = latest.get(file.ordinal);
+        if (!r || !finished(r)) return { ordinal: file.ordinal, kind: file.kind };
+        const fileSpec = await loadFileSpec(this.d.problems, file);
+        const limits = this.limitsFor(spec, file, sub.languageKey, sub.cpuLimitOverrideMs);
+        return {
+          ordinal: file.ordinal,
+          kind: file.kind,
+          outcome: judgeFile(resultFromRow(r), fileSpec, limits, spec.checker, r.attempt),
+        };
+      }),
+    );
+  }
+
+  /** The CPU limit really used for an override (capped by the instance). */
+  effectiveCpuMs(overrideMs: number): number {
+    return Math.min(overrideMs, this.instance.maxCpuSec * 1000);
+  }
+
   private async fail(submissionId: string, message: string): Promise<void> {
     await withTransaction(this.d.db, async (tx) => {
       const sub = await repo.findSubmission(tx, submissionId, { forUpdate: true });
@@ -391,7 +424,7 @@ export class JudgingService {
 
   private async finalizeTx(tx: Tx, sub: SubmissionRow, patch: Partial<SubmissionRow>): Promise<void> {
     const done = await repo.finalize(tx, sub.id, patch);
-    if (!done) return;
+    if (!done || done.mode === 'calibrate') return; // internal runs: no user-facing events
     await this.d.outbox.add(tx, judgeEvents.submissionJudgedV1, {
       key: done.matchId ?? done.id,
       recipients: [done.userId],
@@ -414,6 +447,7 @@ export class JudgingService {
   }
 
   private async emitProgress(tx: Tx, sub: SubmissionRow, stage: number): Promise<void> {
+    if (sub.mode === 'calibrate') return;
     await this.d.outbox.add(tx, judgeEvents.submissionProgressV1, {
       key: sub.matchId ?? sub.id,
       recipients: [sub.userId],

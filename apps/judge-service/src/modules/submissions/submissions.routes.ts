@@ -1,5 +1,7 @@
 import { authUser, type AuthHooks } from '@cb/auth';
 import {
+  calibrationRequestSchema,
+  calibrationResultSchema,
   capacitySchema,
   createSubmissionBodySchema,
   languageInfoSchema,
@@ -10,6 +12,7 @@ import type { HttpServer } from '@cb/http-server';
 import type { RateLimiter } from '@cb/rate-limit';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
+import type { CalibrationService } from '../calibrations/calibrations.service.js';
 import type { JudgingService } from '../judging/judging.service.js';
 import type { SubmissionService } from './submissions.service.js';
 
@@ -21,6 +24,7 @@ export interface IdempotencyHooks {
 export interface SubmissionRouteDeps {
   submissions: SubmissionService;
   judging: JudgingService;
+  calibrations: CalibrationService;
   auth: AuthHooks;
   idem: IdempotencyHooks;
   internalAuth: (req: FastifyRequest) => Promise<void>;
@@ -107,5 +111,23 @@ export function registerSubmissionRoutes(app: HttpServer, d: SubmissionRouteDeps
     '/internal/capacity',
     { schema: { response: { 200: capacitySchema } }, preHandler: [d.internalAuth] },
     async () => s.capacity(),
+  );
+
+  // problem-service calibration runs (plan §14.7)
+  app.post(
+    '/internal/calibrations',
+    {
+      schema: { body: calibrationRequestSchema, response: { 202: calibrationResultSchema } },
+      preHandler: [d.internalAuth],
+    },
+    async (req, reply) => reply.code(202).send(await d.calibrations.create(req.body)),
+  );
+  app.get(
+    '/internal/calibrations/:id',
+    {
+      schema: { params: z.object({ id: z.uuid() }), response: { 200: calibrationResultSchema } },
+      preHandler: [d.internalAuth],
+    },
+    async (req) => d.calibrations.get(req.params.id),
   );
 }

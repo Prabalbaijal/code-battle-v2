@@ -7,6 +7,9 @@ export const envSchema = baseEnvSchema
     SERVICE_NAME: z.string().default('problem-service'),
     PORT: z.coerce.number().int().positive().default(4004),
     DATABASE_URL: z.string().url(),
+    /** BullMQ (problem-calibrate jobs). */
+    REDIS_URL: z.string().url(),
+    JUDGE_SERVICE_URL: z.string().url().default('http://localhost:4005'),
     KAFKA_BROKERS: envList,
     KAFKA_SSL: envBool(false),
     KAFKA_SASL_USERNAME: z.string().optional(),

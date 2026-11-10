@@ -73,3 +73,14 @@ export type Difficulty = (typeof DIFFICULTIES)[number];
 export const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 /** Source code limit (plan §7.3: submissions 64 KB). */
 export const MAX_CODE_BYTES = 64 * 1024;
+
+/**
+ * CPU time multiplier per language vs C++ (plan §9.5), used for default limits and for languages
+ * without their own accepted reference solution during calibration (plan §14.7).
+ */
+export const LANGUAGE_TIME_FACTORS: Record<LanguageKey, number> = {
+  cpp: 1.0,
+  java: 2.0,
+  python: 3.0,
+  javascript: 1.5,
+};

@@ -2,6 +2,7 @@ import { authUser, type AuthHooks } from '@cb/auth';
 import {
   adminProblemPageSchema,
   adminProblemSchema,
+  calibrationReportSchema,
   createProblemBodySchema,
   cursorQuerySchema,
   judgeSpecSchema,
@@ -16,10 +17,12 @@ import {
 import type { HttpServer } from '@cb/http-server';
 import type { FastifyRequest } from 'fastify';
 import { z } from 'zod';
+import type { CalibrationService } from '../calibration/calibration.service.js';
 import type { ProblemService } from './problems.service.js';
 
 export interface ProblemRouteDeps {
   service: ProblemService;
+  calibration: CalibrationService;
   auth: AuthHooks;
   internalAuth: (req: FastifyRequest) => Promise<void>;
 }
@@ -112,6 +115,14 @@ export function registerProblemRoutes(app: HttpServer, d: ProblemRouteDeps): voi
     `${ADMIN}/:id/archive`,
     { schema: { params: idParam, response: { 200: adminProblemSchema } }, preHandler: setter },
     async (req) => s.archive(req.params.id),
+  );
+
+  // Runs every reference solution through the judge, then sets limits (plan §14.7). Costs judge quota.
+  app.post(
+    `${ADMIN}/:id/calibrate`,
+    { schema: { params: idParam, response: { 202: calibrationReportSchema } }, preHandler: setter },
+    async (req, reply) =>
+      reply.code(202).send(await d.calibration.request(req.params.id, authUser(req).userId)),
   );
 
   // ---- internal (battle-service, judge-service) ----

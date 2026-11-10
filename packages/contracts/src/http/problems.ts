@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { DIFFICULTIES, LANGUAGE_KEYS, MAX_CODE_BYTES, SLUG_RE } from '../constants.js';
 import { pageSchema } from './common.js';
 
-export { DIFFICULTIES, LANGUAGE_KEYS, MAX_CODE_BYTES, SLUG_RE } from '../constants.js';
+export { DIFFICULTIES, LANGUAGE_KEYS, LANGUAGE_TIME_FACTORS, MAX_CODE_BYTES, SLUG_RE } from '../constants.js';
 export type { Difficulty, LanguageKey } from '../constants.js';
 
 export const languageKeySchema = z.enum(LANGUAGE_KEYS);
@@ -108,6 +108,29 @@ export const testFileInfoSchema = z.object({
   sha256: z.string(),
 });
 
+/** Latest calibration of a problem (admin view). */
+export const calibrationReportSchema = z.object({
+  id: z.uuid(),
+  version: z.number(),
+  status: z.enum(['pending', 'running', 'passed', 'failed']),
+  /** Per reference solution and file: verdict and CPU time. */
+  runs: z.array(
+    z.object({
+      referenceId: z.uuid(),
+      languageKey: languageKeySchema,
+      expectedVerdict: z.enum(['AC', 'TLE', 'WA']),
+      ordinal: z.number(),
+      verdict: z.string().nullable(),
+      cpuMs: z.number().nullable(),
+    }),
+  ),
+  limits: z.array(z.object({ ordinal: z.number(), languageKey: languageKeySchema, cpuLimitMs: z.number() })),
+  problems: z.array(z.object({ code: z.string(), message: z.string() })),
+  createdAt: z.iso.datetime(),
+  finishedAt: z.iso.datetime().nullable(),
+});
+export type CalibrationReport = z.infer<typeof calibrationReportSchema>;
+
 export const adminProblemSchema = publicProblemSchema.extend({
   status: problemStatusSchema,
   checkerType: checkerTypeSchema,
@@ -127,6 +150,7 @@ export const adminProblemSchema = publicProblemSchema.extend({
     }),
   ),
   limits: z.array(z.object({ ordinal: z.number(), languageKey: languageKeySchema, cpuLimitMs: z.number() })),
+  calibration: calibrationReportSchema.nullable(),
 });
 export type AdminProblem = z.infer<typeof adminProblemSchema>;
 
