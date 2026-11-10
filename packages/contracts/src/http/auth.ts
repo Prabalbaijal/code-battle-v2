@@ -1,59 +1,49 @@
 import { z } from 'zod';
+import {
+  EMAIL_MAX_LENGTH,
+  FULLNAME_MAX_LENGTH,
+  isReservedUsername,
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+  ROLES,
+  USERNAME_HINT,
+  USERNAME_RE,
+} from '../constants.js';
 
-/** Platform roles (plan §16). `admin` implies every other role. */
-export const ROLES = ['user', 'problem_setter', 'admin'] as const;
+// Re-exported for server code that imports everything from '@cb/contracts'.
+export {
+  AUTH_COOKIES,
+  CSRF_HEADER,
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+  REFRESH_COOKIE_PATH,
+  RESERVED_USERNAMES,
+  ROLES,
+  USERNAME_RE,
+} from '../constants.js';
+
 export const roleSchema = z.enum(ROLES);
 export type Role = z.infer<typeof roleSchema>;
-
-/** Cookie names. Both are httpOnly; the web app only checks for their presence. */
-export const AUTH_COOKIES = {
-  access: 'cb_at',
-  refresh: 'cb_rt',
-} as const;
-
-/** Path the refresh cookie is scoped to (refresh + logout both need it). */
-export const REFRESH_COOKIE_PATH = '/api/v1/auth';
-
-/** Custom header required on cookie-authenticated mutations (a cross-site form can't set it). */
-export const CSRF_HEADER = 'x-cb-csrf';
-
-export const USERNAME_RE = /^[a-zA-Z0-9_]{3,20}$/;
-
-/** Would collide with routes like `/users/search` or impersonate staff. Compared case-insensitively. */
-export const RESERVED_USERNAMES = new Set([
-  'search',
-  'batch',
-  'admin',
-  'administrator',
-  'root',
-  'system',
-  'support',
-  'help',
-  'api',
-  'internal',
-  'settings',
-  'login',
-  'logout',
-  'register',
-  'signup',
-  'codebattle',
-  'moderator',
-  'null',
-  'undefined',
-]);
 
 export const usernameSchema = z
   .string()
   .trim()
-  .regex(USERNAME_RE, 'username must be 3–20 letters, digits or _')
-  .refine((u) => !RESERVED_USERNAMES.has(u.toLowerCase()), 'this username is reserved');
-export const emailSchema = z.string().trim().toLowerCase().pipe(z.email()).pipe(z.string().max(254));
-/** Upper bound keeps Argon2 cost predictable; lower bound per OWASP. */
-export const passwordSchema = z.string().min(8, 'password must be at least 8 characters').max(128);
+  .regex(USERNAME_RE, USERNAME_HINT)
+  .refine((u) => !isReservedUsername(u), 'this username is reserved');
+export const emailSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .pipe(z.email())
+  .pipe(z.string().max(EMAIL_MAX_LENGTH));
+export const passwordSchema = z
+  .string()
+  .min(PASSWORD_MIN_LENGTH, `password must be at least ${PASSWORD_MIN_LENGTH} characters`)
+  .max(PASSWORD_MAX_LENGTH);
 
 export const registerBodySchema = z.object({
   username: usernameSchema,
-  fullname: z.string().trim().min(1).max(60),
+  fullname: z.string().trim().min(1).max(FULLNAME_MAX_LENGTH),
   email: emailSchema,
   password: passwordSchema,
 });

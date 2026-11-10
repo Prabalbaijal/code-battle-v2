@@ -1,0 +1,37 @@
+{
+  "name": "@cb/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "repo": {
+    "kind": "app"
+  },
+  "scripts": {
+    "dev": "next dev --port 3000",
+    "build": "next build",
+    "start": "next start --port 3000",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run --passWithNoTests --testTimeout=20000 --exclude \"**/*.int.test.ts\" --exclude \"e2e/**\"",
+    "e2e": "playwright test"
+  },
+  "dependencies": {
+    "@cb/contracts": "workspace:*",
+    "@cb/ui": "workspace:*",
+    "@tanstack/react-query": "5.105.0",
+    "lucide-react": "1.62.0",
+    "next": "16.4.3",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-hook-form": "7.91.0"
+  },
+  "devDependencies": {
+    "@cb/eslint-config": "workspace:*",
+    "@next/eslint-plugin-next": "16.4.3",
+    "@playwright/test": "1.64.1",
+    "@tailwindcss/postcss": "4.3.3",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "tailwindcss": "4.3.3"
+  }
+}

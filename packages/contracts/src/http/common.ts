@@ -1,7 +1,6 @@
 import { z } from 'zod';
 
-export const IDEMPOTENCY_HEADER = 'idempotency-key';
-export const REQUEST_ID_HEADER = 'x-request-id';
+export { IDEMPOTENCY_HEADER, REQUEST_ID_HEADER } from '../constants.js';
 
 export const cursorQuerySchema = z.object({
   cursor: z.string().optional(),

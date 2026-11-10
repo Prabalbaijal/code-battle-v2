@@ -1,6 +1,7 @@
 packages:
   - 'apps/*'
   - 'packages/contracts'
+  - 'packages/ui'
   - 'packages/domain/*'
   - 'packages/libs/*'
   - 'packages/config/*'

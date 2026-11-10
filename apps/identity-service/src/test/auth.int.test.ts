@@ -230,6 +230,12 @@ describe('identity-service', () => {
       const rt = cookies.find((c) => c.name === 'cb_rt')!;
       expect(at).toMatchObject({ path: '/', httpOnly: true, sameSite: 'Lax', secure: true });
       expect(rt).toMatchObject({ path: '/api/v1/auth', httpOnly: true, sameSite: 'Lax' });
+      expect(cookies.find((c) => c.name === 'cb_s')).toMatchObject({
+        value: '1',
+        path: '/',
+        sameSite: 'Lax',
+      });
+      expect(cookies.find((c) => c.name === 'cb_s')?.httpOnly).toBeFalsy();
 
       const me = await call('GET', 'me', { jar });
       expect(me.json()).toMatchObject({ username: u.username, emailVerified: false });

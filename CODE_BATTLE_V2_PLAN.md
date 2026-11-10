@@ -1966,23 +1966,23 @@ Checked on **2026-11-08**. Re-check these before decisions that depend on them:
 
 ## 29. Progress tracker (update as you go)
 
-| Phase                                  | Status         | Notes / links                                       |
-| -------------------------------------- | -------------- | --------------------------------------------------- |
-| 0 Foundation                           | ✅ Done        | PR #1 merged 2026-11-10.                            |
-| 1 Identity / User / Gateway / Web auth | 🟡 In progress | Branch `phase-1/identity`. See "Resume here" below. |
-| 2 Problems + Judge                     | ⬜             |                                                     |
-| 3 Battle + Realtime                    | ⬜             |                                                     |
-| 4 Rating / Leaderboard / Notifications | ⬜             |                                                     |
-| 5 Frontend polish                      | ⬜             |                                                     |
-| 6 Hardening                            | ⬜             |                                                     |
-| 7 AI                                   | ⬜             |                                                     |
-| 8 Migration + Cutover                  | ⬜             |                                                     |
+| Phase                                  | Status  | Notes / links                                   |
+| -------------------------------------- | ------- | ----------------------------------------------- |
+| 0 Foundation                           | ✅ Done | PR #1 merged 2026-11-10.                        |
+| 1 Identity / User / Gateway / Web auth | ✅ Done | PRs #2–#4 merged; web on `phase-1/web` (PR #5). |
+| 2 Problems + Judge                     | ⬜      |                                                 |
+| 3 Battle + Realtime                    | ⬜      |                                                 |
+| 4 Rating / Leaderboard / Notifications | ⬜      |                                                 |
+| 5 Frontend polish                      | ⬜      |                                                 |
+| 6 Hardening                            | ⬜      |                                                 |
+| 7 AI                                   | ⬜      |                                                 |
+| 8 Migration + Cutover                  | ⬜      |                                                 |
 
-### Resume here (Phase 1 status, 2026-11-11, part 3)
+### Resume here (Phase 1 complete, 2026-11-11)
 
 Phase 0 is merged (PR #1): root config, `@cb/contracts`, the platform libs in `packages/libs`, fake-judge0, template-service, compose stack, CI, ADRs.
 
-**Phase 1 done and tested** (part 1 = PR #2, part 2 = PR #3, part 3 on branch `phase-1/gateway`):
+**Phase 1 done and tested** (PR #2 identity + email, #3 user-service, #4 gateway, #5 web):
 
 - `@cb/contracts`: auth DTOs and cookie/CSRF constants (`http/auth.ts`), identity events (`identityEvents`), `email-send` job payload (`jobs/email.ts`).
 - `@cb/auth` (new lib): `TokenSigner` (EdDSA access tokens + socket tickets, key rotation by `kid`), `JwtVerifier` (local or remote JWKS), Fastify hooks `authenticate` / `optionalAuth` / `requireRole` / `requireVerified` / `csrfGuard`.
@@ -1992,14 +1992,20 @@ Phase 0 is merged (PR #1): root config, `@cb/contracts`, the platform libs in `p
 - `@cb/auth` also has internal service tokens (`signInternalToken`, `createInternalAuth`, HS256, `aud=cb-internal`).
 - `apps/gateway` (port 8080): route table with per-prefix access (`public` / `optional` / `user` / `verified` / role), JWKS verification, strips client-sent `x-user-*` / `x-internal-*` and sets them from the token, `x-forwarded-for` from trusted proxies only, Origin check + `x-cb-csrf`, per-IP limit with `RateLimit-*` headers, `/internal/*` and path-traversal blocked, upstream failures mapped to 503/504/502 in the standard error body, `/health/upstreams`, `/docs` (Swagger UI over each service's `/openapi.json`, trimmed to public paths). 12 integration tests against fake upstreams. Verified in dev: the whole Phase 1 flow through the gateway with a cookie jar.
 - `@cb/http-server` can generate OpenAPI from zod schemas (`openapi` option → `GET /openapi.json`); identity and user enable it.
+- `packages/ui`: dark-first tokens (light theme via `prefers-color-scheme`, every text pair checked ≥ 4.5:1), Button/Input/Field/Card/Badge/Alert/Spinner/Skeleton, `UserAvatar` (initials fallback) and accessible `Tabs` (own implementation, no Radix).
+- `apps/web` (Next.js 16, React 19, TanStack Query, react-hook-form): landing, login, register, verify-email, forgot/reset password, friends (friends · requests · find players), `/u/[username]`; `src/proxy.ts` optimistic guard on the `cb_s` hint; API client with single-flight refresh on 401, idempotency keys reused on retry, CSRF header. Playwright E2E (`apps/web/e2e`) runs the whole Phase 1 DoD in Chrome against the running stack.
 - `pnpm gen-keys` prints a `JWT_KEYS` value. Services load `.env` in dev (`--env-file-if-exists`); see each app's `.env.example`.
 
-**Remaining for Phase 1** (in this order):
+**Phase 1 DoD results (2026-11-11):**
 
-1. `apps/web`: Next.js skeleton, `packages/ui`, auth pages, `middleware.ts`, rewrites, TanStack Query, friends and search pages.
-2. Run the Phase 1 DoD (§25) end to end in the browser (the backend flow already passes through the gateway) (register → email → verify → login → refresh → friends), then merge.
+- E2E in Chrome: register → verification email in the fake inbox → verify → login → refresh rotation (expired access cookie) → send, accept and remove a friend → logout → protected-page redirect. Passes (`PW_CHANNEL=chrome pnpm --filter @cb/web e2e` with the stack running and `EMAIL_PROVIDER=fake`).
+- Race test: concurrent A→B / B→A requests leave one row (user-service integration tests).
+- Lighthouse 13.5 on /login, /register, /forgot-password: accessibility 100, best practices 100, SEO 100; performance 99 with the desktop preset. With mobile throttling the median was ~76 on the dev machine, but its CPU benchmark index was ~700 (Lighthouse treats < 1000 as unreliable). Re-check on a CI runner with Lighthouse CI (Phase 5).
+- First-load JS (gzip, module scripts): landing 162 KB, friends 167 KB, form pages 175 KB (react-hook-form ≈ 12 KB). Budget is 170 KB; revisit in Phase 5.
 
-Deferred: an identity admin endpoint to change roles (the `identity.user.role_changed.v1` contract exists). Avatar uploads need `CLOUDINARY_*` env vars from the owner.
+**Next:** Phase 2 (problems + judge), starting with problem-service.
+
+Deferred: an identity admin endpoint to change roles (the `identity.user.role_changed.v1` contract exists); avatar upload UI and profile editing page; Storybook for `packages/ui` (Phase 5); E2E in CI (needs the compose stack in CI, Phase 6). Avatar uploads need `CLOUDINARY_*` env vars from the owner.
 
 **Notes:**
 
@@ -2015,3 +2021,4 @@ Deferred: an identity admin endpoint to change roles (the `identity.user.role_ch
 - 2026-11-10: Email provider is **Brevo** (free tier ~300/day shared; third-party sources, re-verify per §28). `email_log` adds `status` (pending/sending/sent/failed), `attempts`, `last_error`, `sent_at`; the recipient is stored only as a hash. Daily cap default 280. `email-send` retry policy lives in `@cb/contracts` (`EMAIL_JOB_RETRY`, 8 attempts, exponential from 5 s).
 - 2026-11-10: user-service decisions. Friend requests by `toUserId`; a mutual request accepts immediately; reject is silent (the requester keeps seeing "pending", the row is `ignored`); added `DELETE /friends/requests/:otherUserId` (cancel). Sending a request needs a verified email and an Idempotency-Key, 30/hour per user. Reserved usernames (e.g. `search`, `admin`) are refused at registration because `/users/:username` shares the path space. A brand-new user's profile can 404 for a moment until the registration event is consumed.
 - 2026-11-11: Gateway decisions. Client IP comes from `TRUSTED_PROXIES` (addresses/CIDRs, e.g. Caddy's Docker network); Fastify now ignores hop counts because they can't prove the peer is a proxy. Internal services keep `trustProxy: true`, so they must never publish ports outside the Docker network. The gateway enforces only the global per-IP limit; route-specific limits live in the owning service. `/api/v1/auth/*` is `public` at the gateway so an expired access cookie can still reach `/auth/refresh`. Redpanda Console moved to port 8081 (8080 is the gateway). Kept Fastify over Express after discussing it with the owner (Express-like API; zod schemas give validation, types and OpenAPI).
+- 2026-11-11: Web decisions. No zod in the browser: it doesn't tree-shake (~45 KB gzip), so `@cb/contracts/constants` holds zod-free rules that both the server's zod schemas and the web's react-hook-form rules use. Forms use react-hook-form (owner's choice) with built-in rules, not the zod resolver. `cb_s` (session hint) is readable by JS so the app skips `/auth/me` for visitors; tokens stay httpOnly. Own Tabs and Avatar replace Radix ones (−10 KB). Next 16 renamed middleware to `src/proxy.ts`. Mutating the session never calls `queryClient.clear()`: it detached mounted observers (found by E2E: the verify banner stayed stale after login).

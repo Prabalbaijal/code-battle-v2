@@ -12,3 +12,9 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 .idea/
+
+# Next.js / Playwright
+.next/
+next-env.d.ts
+playwright-report/
+test-results/
