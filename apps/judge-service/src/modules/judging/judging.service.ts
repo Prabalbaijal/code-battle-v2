@@ -18,6 +18,7 @@ import type { Queue } from 'bullmq';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { JudgeRunRow, LanguageProfileRow, SubmissionRow } from '../../db/schema.js';
 import { normalizeResult, type CodeExecutor } from '../../judge0/executor.js';
+import { JUDGE0_PROCESSES } from '../../judge0/languages.js';
 import { loadFileSpec, type ProblemSource } from '../../problems/problem-source.js';
 import { POLL_DELAYS_MS } from '../../queues.js';
 import { judgingRepository as repo } from './judging.repository.js';
@@ -233,7 +234,7 @@ export class JudgingService {
       cpuLimitMs: overrideMs ?? file.cpuLimitMs[lang as LanguageKey] ?? Math.round(DEFAULT_CPU_MS * factor),
       memoryLimitKb: spec.memoryLimitKb,
       outputLimitKb: spec.outputLimitKb,
-      lang: { memOverheadKb: p?.memOverheadKb ?? 0, maxProcesses: p?.maxProcesses ?? 1 },
+      lang: { memOverheadKb: p?.memOverheadKb ?? 0, maxProcesses: p?.maxProcesses ?? JUDGE0_PROCESSES },
       instance: this.instance,
     });
   }

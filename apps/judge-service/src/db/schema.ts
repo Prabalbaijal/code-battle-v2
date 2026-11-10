@@ -28,7 +28,7 @@ export const languageProfiles = pgTable('language_profiles', {
   name: text('name').notNull(),
   defaultTimeFactor: numeric('default_time_factor', { precision: 3, scale: 1 }).notNull(),
   memOverheadKb: integer('mem_overhead_kb').notNull().default(0),
-  maxProcesses: integer('max_processes').notNull().default(1),
+  maxProcesses: integer('max_processes').notNull().default(60),
   enabled: boolean('enabled').notNull().default(true),
 });
 

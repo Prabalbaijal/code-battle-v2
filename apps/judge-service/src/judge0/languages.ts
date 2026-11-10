@@ -1,5 +1,13 @@
 import { LANGUAGE_TIME_FACTORS, type LanguageKey } from '@cb/contracts';
 
+/**
+ * Judge0's own default for `max_processes_and_or_threads`. Judge0 CE starts every program through
+ * a shell wrapper (`run.sh`, `conda_init` for Python) that forks, so a lower limit makes each run
+ * fail with "fork: Resource temporarily unavailable" (found with real Judge0; fake-judge0 now
+ * mimics it). Fork bombs stay inside the isolate sandbox and its time and memory limits.
+ */
+export const JUDGE0_PROCESSES = 60;
+
 /** How each battle language is recognised in Judge0's /languages and how it is limited (plan §9.5). */
 export const LANGUAGE_RULES: Record<
   LanguageKey,
@@ -9,26 +17,26 @@ export const LANGUAGE_RULES: Record<
     pattern: /^C\+\+ \((GCC|Clang)/i,
     timeFactor: LANGUAGE_TIME_FACTORS.cpp,
     memOverheadKb: 0,
-    maxProcesses: 1,
+    maxProcesses: JUDGE0_PROCESSES,
   },
-  // the JVM and Node use threads and a bigger baseline heap
+  // the JVM and Node need a bigger baseline heap
   java: {
     pattern: /^Java \(OpenJDK/i,
     timeFactor: LANGUAGE_TIME_FACTORS.java,
     memOverheadKb: 65_536,
-    maxProcesses: 60,
+    maxProcesses: JUDGE0_PROCESSES,
   },
   python: {
     pattern: /^Python \(3\./i,
     timeFactor: LANGUAGE_TIME_FACTORS.python,
     memOverheadKb: 16_384,
-    maxProcesses: 1,
+    maxProcesses: JUDGE0_PROCESSES,
   },
   javascript: {
     pattern: /^JavaScript \(Node\.js/i,
     timeFactor: LANGUAGE_TIME_FACTORS.javascript,
     memOverheadKb: 32_768,
-    maxProcesses: 60,
+    maxProcesses: JUDGE0_PROCESSES,
   },
 };
 

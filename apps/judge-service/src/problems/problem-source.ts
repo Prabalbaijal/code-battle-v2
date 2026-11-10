@@ -68,7 +68,11 @@ export class ProblemServiceSource implements ProblemSource {
         headers: await this.auth(),
         schema: judgeSpecSchema,
       });
-      this.specs.set(problemId, { at: Date.now(), spec: res.data });
+      // Only published specs are cached. A draft is read by setters and calibration, and caching
+      // it hid a fresh publish from players for the TTL (found with real Judge0). A published spec
+      // can't go stale in a harmful way: changing tests or limits unpublishes the problem.
+      if (res.data.status === 'published') this.specs.set(problemId, { at: Date.now(), spec: res.data });
+      else this.specs.delete(problemId);
       return res.data;
     } catch (err) {
       if (err instanceof UpstreamError && err.upstreamStatus === 404) return undefined;

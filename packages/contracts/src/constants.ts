@@ -108,3 +108,15 @@ export const CHECKER_TYPES = ['tokens', 'float', 'exact'] as const;
 export type CheckerType = (typeof CHECKER_TYPES)[number];
 export const REFERENCE_VERDICTS = ['AC', 'TLE', 'WA'] as const;
 export type ReferenceVerdict = (typeof REFERENCE_VERDICTS)[number];
+
+/**
+ * CPU time a trivial program needs per language on hosted Judge0 CE 1.14 (RapidAPI), measured
+ * 2026-11-11: cpp 3 ms, java 82 ms, python 972 ms (conda wrapper), javascript 1038 ms. Calibration
+ * adds it to limits it derives from C++ (plan §14.7); re-measure when switching Judge0 instances.
+ */
+export const LANGUAGE_STARTUP_MS: Record<LanguageKey, number> = {
+  cpp: 0,
+  java: 100,
+  python: 1000,
+  javascript: 1050,
+};

@@ -1966,17 +1966,17 @@ Checked on **2026-11-08**. Re-check these before decisions that depend on them:
 
 ## 29. Progress tracker (update as you go)
 
-| Phase                                  | Status         | Notes / links                                     |
-| -------------------------------------- | -------------- | ------------------------------------------------- |
-| 0 Foundation                           | ✅ Done        | PR #1 merged 2026-11-10.                          |
-| 1 Identity / User / Gateway / Web auth | ✅ Done        | PRs #2–#4 merged; web on `phase-1/web` (PR #5).   |
-| 2 Problems + Judge                     | 🟡 In progress | PRs #6–#8 merged; admin UI on `phase-2/admin-ui`. |
-| 3 Battle + Realtime                    | ⬜             |                                                   |
-| 4 Rating / Leaderboard / Notifications | ⬜             |                                                   |
-| 5 Frontend polish                      | ⬜             |                                                   |
-| 6 Hardening                            | ⬜             |                                                   |
-| 7 AI                                   | ⬜             |                                                   |
-| 8 Migration + Cutover                  | ⬜             |                                                   |
+| Phase                                  | Status         | Notes / links                                          |
+| -------------------------------------- | -------------- | ------------------------------------------------------ |
+| 0 Foundation                           | ✅ Done        | PR #1 merged 2026-11-10.                               |
+| 1 Identity / User / Gateway / Web auth | ✅ Done        | PRs #2–#4 merged; web on `phase-1/web` (PR #5).        |
+| 2 Problems + Judge                     | 🟡 In progress | PRs #6–#8 merged; admin UI and real-Judge0 fixes open. |
+| 3 Battle + Realtime                    | ⬜             |                                                        |
+| 4 Rating / Leaderboard / Notifications | ⬜             |                                                        |
+| 5 Frontend polish                      | ⬜             |                                                        |
+| 6 Hardening                            | ⬜             |                                                        |
+| 7 AI                                   | ⬜             |                                                        |
+| 8 Migration + Cutover                  | ⬜             |                                                        |
 
 ### Resume here (Phase 1 complete, 2026-11-11)
 
@@ -2018,8 +2018,21 @@ Phase 0 is merged (PR #1): root config, `@cb/contracts`, the platform libs in `p
 
 **Remaining for Phase 2** (in this order):
 
+**Phase 2 DoD with real Judge0 (2026-11-11, branch `phase-2/real-judge0`):** hosted Judge0 CE 1.14 on RapidAPI (free Basic plan, now "deprecated" but still active: 50 batch requests/day; RapidAPI counts one batch request as one, whatever the number of files). 14 calls in total. A "Pair sums" problem ($|a|,|b| le 10^{12}$, files of 2 / 8 / 30 000 cases) was authored, calibrated and published through the web proxy:
+
+- Calibration: C++ AC 3 / 3 / 20 ms; the C++ brute force AC on the sample and TLE (15 s) on small and large; Python AC ~970 ms on every file → limits cpp 1000, python 3000 ms.
+- Player: Python AC (976 ms, 53 MB); C++ with `int` → WA on the small file, case 4; JavaScript AC (1056 ms) against a limit derived from C++ only (1700 ms).
+
+It found three bugs that fake-judge0 couldn't show, all fixed with regression tests:
+
+1. **Every run was RE** ("fork: Resource temporarily unavailable"): we sent `max_processes_and_or_threads=1` for C++ and Python, but Judge0 CE starts each program through a forking shell wrapper. Now 60 (Judge0's default) for every language; migration `0002` fixes existing profiles; fake-judge0 now fails runs with fewer than 2 processes the same way.
+2. **Players got 404 right after publish:** judge-service cached the draft spec read by calibration for 30 s. Only published specs are cached now.
+3. **Derived limits ignored runtime startup:** Python and Node use ~1 s CPU before user code (trivial program: cpp 3 ms, java 82 ms, python 972 ms, javascript 1038 ms), so a limit derived from C++ (min 1000 ms) would TLE every correct JavaScript solution. Derived limits now add 1.5 × `LANGUAGE_STARTUP_MS` (`@cb/contracts`).
+
+**Remaining for Phase 2:**
+
 1. Judge drift job (§14.8) and the Postgres-polling degraded mode for judge workers (§18.1).
-2. Phase 2 DoD with ≤ 20 real Judge0 calls (needs RapidAPI Judge0 CE credentials in `.env`).
+2. The judge's daily budget counts file runs, while RapidAPI counts batch requests (a 3-file batch = 1). Safe but ~3× too strict; count requests instead.
 
 The `battle.match.started.v1` "seen" consumer in problem-service waits for battle-service (Phase 3).
 
@@ -2045,3 +2058,4 @@ Deferred: an identity admin endpoint to change roles (the `identity.user.role_ch
 - 2026-11-11: Judge decisions. The daily budget and the verdict cache live in Postgres (atomic `UPDATE … RETURNING`, indexed lookup) instead of Redis, so Redis stays off the correctness path. One `judge-poll` job ("sync") both dispatches pending runs and fetches results, so retries after Judge0 errors and polling share one schedule. Default `JUDGE0_MODE=poll` (no public URL needed); callbacks come through the public web origin at `/api/v1/hooks/judge0/:runId?sig=`. Custom input is file 0 of a Run and has no verdict. Starting a submission must fit the budget; continuing one (stage 2, reruns) may overdraw slightly. `submissions` isn't partitioned yet (Phase 6). The judge spec now includes the problem status; only problem setters can submit to drafts.
 - 2026-11-10: Calibration decisions. Reference runs go through judge-service's internal `calibrate` mode instead of calling Judge0 from problem-service, so budget, breaker, blobs and checkers stay in one place. Each run asks for 15 s CPU (capped at the instance maximum) and records per-file times; limits are 3 × the slowest AC time (own language if it has an AC reference, else C++ × `LANGUAGE_TIME_FACTORS`, now shared in `@cb/contracts/constants`), rounded up to 100 ms, clamped to [1000 ms, instance max]. `NO_CPP_BASELINE` is only raised when no C++ AC reference ran on a file (a failing one is already `REFERENCE_FAILED`). A version change during calibration fails it with `PROBLEM_CHANGED`. problem-service now needs Redis (`REDIS_URL`) for its BullMQ worker.
 - 2026-11-11: Admin UI decisions. Admin pages are client-rendered behind the `src/proxy.ts` hint guard and a role check; the gateway and problem-service stay the authority (plan §21 said SSR; nothing on these pages needs SEO or a fast first paint). Statements render with react-markdown + remark-gfm + remark-math + rehype-katex: no raw HTML, `javascript:` links dropped, KaTeX `trust: false`; the same component will render statements for players. Reference code is a plain textarea for now; CodeMirror arrives with the battle room (Phase 3). The publish checklist comes from the server (`publishBlockers` on the admin view) instead of re-implementing the rules in the browser. Both proxies drop the `Expect` header.
+- 2026-11-11: Real Judge0 decisions. `max_processes_and_or_threads` is 60 for every language (Judge0 CE's wrapper forks; fork bombs stay inside isolate). judge-service caches only published judge specs. Calibration adds `1.5 × LANGUAGE_STARTUP_MS[lang]` to limits derived from C++ (measured on hosted Judge0 CE 1.14; re-measure on another instance); a language's own AC reference already includes its startup. Free RapidAPI plan: 50 batch requests/day.
