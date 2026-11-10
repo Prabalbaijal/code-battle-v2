@@ -1717,7 +1717,7 @@ CREATE TABLE hint_usage (user_id uuid, problem_id uuid, match_id uuid, level sma
 
 | Service      | Additional                                                                                                                                                                                                                                                       |
 | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| gateway      | `CORS_ORIGINS, SERVICE_URLS_*` (identity, user, battle, problem, judge, rating, notification, ai, realtime)                                                                                                                                                      |
+| gateway      | `CORS_ORIGINS, TRUSTED_PROXIES, RATE_LIMIT_PER_IP_PER_MIN, SERVICE_URL_*` (identity, user, battle, problem, judge, rating, notification, ai, realtime)                                                                                                           |
 | identity     | `JWT_PRIVATE_KEY_PEM, JWT_KID, ACCESS_TOKEN_TTL=900, REFRESH_TOKEN_TTL=2592000, SOCKET_TICKET_TTL=60, APP_URL, REALTIME_PUBLIC_URL`                                                                                                                              |
 | user         | `CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET, CLOUDINARY_FOLDER`                                                                                                                                                                            |
 | battle       | `MATCH_DURATION_SECONDS=1800, CHALLENGE_TTL_SECONDS=30, DECIDE_CAP_SECONDS=600, MATCH_RESERVE_CALLS=40, RECONCILER_INTERVAL_MS=15000, PROBLEM_SERVICE_URL, JUDGE_SERVICE_URL`                                                                                    |
@@ -1978,11 +1978,11 @@ Checked on **2026-11-08**. Re-check these before decisions that depend on them:
 | 7 AI                                   | ⬜             |                                                     |
 | 8 Migration + Cutover                  | ⬜             |                                                     |
 
-### Resume here (Phase 1 status, 2026-11-10, part 2)
+### Resume here (Phase 1 status, 2026-11-11, part 3)
 
 Phase 0 is merged (PR #1): root config, `@cb/contracts`, the platform libs in `packages/libs`, fake-judge0, template-service, compose stack, CI, ADRs.
 
-**Phase 1 done and tested** (part 1 merged as PR #2; part 2 on branch `phase-1/user-service`):
+**Phase 1 done and tested** (part 1 = PR #2, part 2 = PR #3, part 3 on branch `phase-1/gateway`):
 
 - `@cb/contracts`: auth DTOs and cookie/CSRF constants (`http/auth.ts`), identity events (`identityEvents`), `email-send` job payload (`jobs/email.ts`).
 - `@cb/auth` (new lib): `TokenSigner` (EdDSA access tokens + socket tickets, key rotation by `kid`), `JwtVerifier` (local or remote JWKS), Fastify hooks `authenticate` / `optionalAuth` / `requireRole` / `requireVerified` / `csrfGuard`.
@@ -1990,13 +1990,14 @@ Phase 0 is merged (PR #1): root config, `@cb/contracts`, the platform libs in `p
 - `apps/notification-service` (port 4003, email part): `email-send` worker, `EmailProvider` with Brevo + fake inbox (`GET /internal/dev/inbox?to=`), `email_log` claim-before-send dedupe, permanent vs retryable errors, daily cap that defers jobs to next UTC midnight, provider rate limit, dead letters without links. 8 integration tests. Verified end to end in dev: register → email in fake inbox → verify → `ev=true` after refresh.
 - `apps/user-service` (port 4002): profiles from `identity.user.registered.v1` (inbox, exactly once), `GET /users/me|:username` (with viewer `relationship`), `PATCH /users/me` (+ `user.profile.updated.v1`), prefix search with keyset pagination + trigram fallback, signed Cloudinary avatar uploads (own `public_id` only), `/internal/users/batch` behind service tokens. Friends: request (mutual request = instant friends), accept, silent reject, cancel, remove, paginated lists, `user.friendship.changed.v1` keyed by `user_low`. 13 integration tests incl. the A→B / B→A race (one row). Verified in dev across identity → Kafka → user-service with real identity tokens via JWKS.
 - `@cb/auth` also has internal service tokens (`signInternalToken`, `createInternalAuth`, HS256, `aud=cb-internal`).
+- `apps/gateway` (port 8080): route table with per-prefix access (`public` / `optional` / `user` / `verified` / role), JWKS verification, strips client-sent `x-user-*` / `x-internal-*` and sets them from the token, `x-forwarded-for` from trusted proxies only, Origin check + `x-cb-csrf`, per-IP limit with `RateLimit-*` headers, `/internal/*` and path-traversal blocked, upstream failures mapped to 503/504/502 in the standard error body, `/health/upstreams`, `/docs` (Swagger UI over each service's `/openapi.json`, trimmed to public paths). 12 integration tests against fake upstreams. Verified in dev: the whole Phase 1 flow through the gateway with a cookie jar.
+- `@cb/http-server` can generate OpenAPI from zod schemas (`openapi` option → `GET /openapi.json`); identity and user enable it.
 - `pnpm gen-keys` prints a `JWT_KEYS` value. Services load `.env` in dev (`--env-file-if-exists`); see each app's `.env.example`.
 
 **Remaining for Phase 1** (in this order):
 
-1. gateway (port 8080): JWKS verification, RBAC route table, rate limits, proxy routes, CSRF/Origin checks, OpenAPI aggregation at `/docs`.
-2. `apps/web`: Next.js skeleton, `packages/ui`, auth pages, `middleware.ts`, rewrites, TanStack Query, friends and search pages.
-3. Run the Phase 1 DoD (§25) end to end (register → email → verify → login → refresh → friends), then merge.
+1. `apps/web`: Next.js skeleton, `packages/ui`, auth pages, `middleware.ts`, rewrites, TanStack Query, friends and search pages.
+2. Run the Phase 1 DoD (§25) end to end in the browser (the backend flow already passes through the gateway) (register → email → verify → login → refresh → friends), then merge.
 
 Deferred: an identity admin endpoint to change roles (the `identity.user.role_changed.v1` contract exists). Avatar uploads need `CLOUDINARY_*` env vars from the owner.
 
@@ -2013,3 +2014,4 @@ Deferred: an identity admin endpoint to change roles (the `identity.user.role_ch
 - 2026-11-10: Phase 1 identity decisions. Refresh cookie path is `/api/v1/auth` (logout must read it). A rotated refresh token reused within 10 s returns 409 (multi-tab race) instead of revoking the family. Login accepts username or email (v1 used username). Registration does not log the user in (the stored idempotent replay can't re-set cookies); the web app calls login next. No email or token is put on Kafka; dispatched email job rows are purged after 10 min.
 - 2026-11-10: Email provider is **Brevo** (free tier ~300/day shared; third-party sources, re-verify per §28). `email_log` adds `status` (pending/sending/sent/failed), `attempts`, `last_error`, `sent_at`; the recipient is stored only as a hash. Daily cap default 280. `email-send` retry policy lives in `@cb/contracts` (`EMAIL_JOB_RETRY`, 8 attempts, exponential from 5 s).
 - 2026-11-10: user-service decisions. Friend requests by `toUserId`; a mutual request accepts immediately; reject is silent (the requester keeps seeing "pending", the row is `ignored`); added `DELETE /friends/requests/:otherUserId` (cancel). Sending a request needs a verified email and an Idempotency-Key, 30/hour per user. Reserved usernames (e.g. `search`, `admin`) are refused at registration because `/users/:username` shares the path space. A brand-new user's profile can 404 for a moment until the registration event is consumed.
+- 2026-11-11: Gateway decisions. Client IP comes from `TRUSTED_PROXIES` (addresses/CIDRs, e.g. Caddy's Docker network); Fastify now ignores hop counts because they can't prove the peer is a proxy. Internal services keep `trustProxy: true`, so they must never publish ports outside the Docker network. The gateway enforces only the global per-IP limit; route-specific limits live in the owning service. `/api/v1/auth/*` is `public` at the gateway so an expired access cookie can still reach `/auth/refresh`. Redpanda Console moved to port 8081 (8080 is the gateway). Kept Fastify over Express after discussing it with the owner (Express-like API; zod schemas give validation, types and OpenAPI).
