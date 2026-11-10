@@ -34,12 +34,18 @@ export function codeHash(languageKey: string, code: string): string {
   return createHash('sha256').update(`${languageKey}|${normalised}`).digest('hex');
 }
 
+/** Calibration runs belong to the system user and never reach these user-facing paths. */
+export function userMode(mode: SubmissionRow['mode']): 'submit' | 'run' {
+  if (mode === 'calibrate') throw new Error('calibration runs are internal');
+  return mode;
+}
+
 const trimOut = (s: string | null, max = 4096) => (s && s.length > max ? `${s.slice(0, max)}…` : s);
 
 export function toView(s: SubmissionRow, custom?: JudgeRunRow): SubmissionView {
   return {
     id: s.id,
-    mode: s.mode,
+    mode: userMode(s.mode),
     problemId: s.problemId,
     matchId: s.matchId,
     languageKey: s.languageKey as SubmissionView['languageKey'],
@@ -189,7 +195,7 @@ export class SubmissionService {
           matchId: s.matchId,
           userId: s.userId,
           problemId: s.problemId,
-          mode: s.mode,
+          mode: userMode(s.mode),
           verdict: s.verdict!,
           failedFile: s.failedFile,
           failedCase: s.failedCase,
@@ -238,7 +244,7 @@ export class SubmissionService {
         matchId: s.matchId,
         userId: s.userId,
         problemId: s.problemId,
-        mode: s.mode,
+        mode: userMode(s.mode),
         submittedAt: s.submittedAt.toISOString(),
       },
     });

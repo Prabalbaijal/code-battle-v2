@@ -44,7 +44,7 @@ export const submissions = pgTable(
     matchId: uuid('match_id'),
     problemId: uuid('problem_id').notNull(),
     problemVersion: integer('problem_version').notNull(),
-    mode: text('mode', { enum: ['submit', 'run'] }).notNull(),
+    mode: text('mode', { enum: ['submit', 'run', 'calibrate'] }).notNull(),
     languageKey: text('language_key').notNull(),
     code: text('code').notNull(),
     codeHash: text('code_hash').notNull(),
@@ -59,11 +59,15 @@ export const submissions = pgTable(
     maxMemKb: integer('max_mem_kb'),
     message: text('message'),
     fromCache: boolean('from_cache').notNull().default(false),
+    /** Calibration runs: one CPU limit for every file instead of the problem's limits. */
+    cpuLimitOverrideMs: integer('cpu_limit_override_ms'),
+    /** Calibration runs: idempotency key from problem-service. */
+    requestKey: text('request_key').unique('submissions_request_key_key'),
     submittedAt: timestamp('submitted_at', { withTimezone: true }).notNull().defaultNow(),
     judgedAt: timestamp('judged_at', { withTimezone: true }),
   },
   (t) => [
-    check('submissions_mode', sql`${t.mode} in ('submit','run')`),
+    check('submissions_mode', sql`${t.mode} in ('submit','run','calibrate')`),
     check('submissions_status', sql`${t.status} in ('queued','running','done')`),
     check('submissions_verdict', sql.raw(`verdict is null or verdict in ${VERDICT_SQL}`)),
     check('submissions_code_size', sql`octet_length(${t.code}) <= 65536`),

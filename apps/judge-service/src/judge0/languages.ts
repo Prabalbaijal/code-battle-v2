@@ -1,17 +1,32 @@
-import type { LanguageKey } from '@cb/contracts';
+import { LANGUAGE_TIME_FACTORS, type LanguageKey } from '@cb/contracts';
 
 /** How each battle language is recognised in Judge0's /languages and how it is limited (plan §9.5). */
 export const LANGUAGE_RULES: Record<
   LanguageKey,
   { pattern: RegExp; timeFactor: number; memOverheadKb: number; maxProcesses: number }
 > = {
-  cpp: { pattern: /^C\+\+ \((GCC|Clang)/i, timeFactor: 1.0, memOverheadKb: 0, maxProcesses: 1 },
+  cpp: {
+    pattern: /^C\+\+ \((GCC|Clang)/i,
+    timeFactor: LANGUAGE_TIME_FACTORS.cpp,
+    memOverheadKb: 0,
+    maxProcesses: 1,
+  },
   // the JVM and Node use threads and a bigger baseline heap
-  java: { pattern: /^Java \(OpenJDK/i, timeFactor: 2.0, memOverheadKb: 65_536, maxProcesses: 60 },
-  python: { pattern: /^Python \(3\./i, timeFactor: 3.0, memOverheadKb: 16_384, maxProcesses: 1 },
+  java: {
+    pattern: /^Java \(OpenJDK/i,
+    timeFactor: LANGUAGE_TIME_FACTORS.java,
+    memOverheadKb: 65_536,
+    maxProcesses: 60,
+  },
+  python: {
+    pattern: /^Python \(3\./i,
+    timeFactor: LANGUAGE_TIME_FACTORS.python,
+    memOverheadKb: 16_384,
+    maxProcesses: 1,
+  },
   javascript: {
     pattern: /^JavaScript \(Node\.js/i,
-    timeFactor: 1.5,
+    timeFactor: LANGUAGE_TIME_FACTORS.javascript,
     memOverheadKb: 32_768,
     maxProcesses: 60,
   },

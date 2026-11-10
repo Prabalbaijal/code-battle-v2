@@ -454,3 +454,63 @@ describe('intake gates', () => {
     );
   });
 });
+
+describe('calibration runs (internal)', () => {
+  const calibrate = async (code: string, cpuLimitMs: number, requestKey = crypto.randomUUID()) =>
+    poll.app.inject({
+      method: 'POST',
+      url: '/internal/calibrations',
+      payload: { problemId: PROBLEM_ID, languageKey: 'python', code, cpuLimitMs, requestKey },
+      headers: { authorization: `Bearer ${await signInternalToken(SECRET, 'problem-service')}` },
+    });
+  const until = async (id: string) =>
+    waitFor(
+      async () => {
+        const r = (
+          await poll.app.inject({
+            method: 'GET',
+            url: `/internal/calibrations/${id}`,
+            headers: { authorization: `Bearer ${await signInternalToken(SECRET, 'problem-service')}` },
+          })
+        ).json() as {
+          status: string;
+          files: { ordinal: number; verdict: string; cpuMs: number }[];
+          cpuLimitMs: number;
+        };
+        return r.status === 'done' ? r : undefined;
+      },
+      { what: 'calibration', timeoutMs: 45_000, intervalMs: 200 },
+    );
+
+  it('runs every file with the override limit, no fail-fast, and reports per-file times', async () => {
+    const r = await calibrate(code('program=sum-cases time=0.3'), 5000);
+    expect(r.statusCode).toBe(202);
+    const done = await until(r.json().id);
+    expect(done.cpuLimitMs).toBe(5000);
+    expect(done.files.map((f) => [f.ordinal, f.verdict, f.cpuMs])).toEqual([
+      [1, 'AC', 300],
+      [2, 'AC', 300],
+      [3, 'AC', 300],
+    ]);
+  });
+
+  it('keeps judging after a failure and measures TLE without near-miss reruns', async () => {
+    const wa = await until((await calibrate(code('program=sum-cases wrongCase=3'), 5000)).json().id);
+    // sample has only 2 cases; small and large both fail case 3, and large still ran (no fail-fast)
+    expect(wa.files.map((f) => f.verdict)).toEqual(['AC', 'WA', 'WA']);
+    // 25 KB × 0.21 s/KB ≈ 5.25 s > 5 s: a near-miss that a normal submit would rerun
+    const r = await calibrate(code('program=sum-cases timePerKb=0.21'), 5000);
+    const tle = await until(r.json().id);
+    expect(tle.files.find((f) => f.ordinal === 3)).toMatchObject({ verdict: 'TLE' });
+    expect((await runsOf(poll, r.json().id)).filter((x) => x.fileOrdinal === 3)).toHaveLength(1);
+  });
+
+  it('is idempotent by requestKey and emits no user events', async () => {
+    const key = crypto.randomUUID();
+    const a = (await calibrate(code('program=sum-cases'), 3000, key)).json();
+    const b = (await calibrate(code('program=sum-cases'), 3000, key)).json();
+    expect(b.id).toBe(a.id);
+    await until(a.id);
+    expect(await poll.infra.db.db.select().from(outbox).where(eq(outbox.key, a.id))).toHaveLength(0);
+  });
+});

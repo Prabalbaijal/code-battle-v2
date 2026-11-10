@@ -1966,17 +1966,17 @@ Checked on **2026-11-08**. Re-check these before decisions that depend on them:
 
 ## 29. Progress tracker (update as you go)
 
-| Phase                                  | Status         | Notes / links                                                     |
-| -------------------------------------- | -------------- | ----------------------------------------------------------------- |
-| 0 Foundation                           | ✅ Done        | PR #1 merged 2026-11-10.                                          |
-| 1 Identity / User / Gateway / Web auth | ✅ Done        | PRs #2–#4 merged; web on `phase-1/web` (PR #5).                   |
-| 2 Problems + Judge                     | 🟡 In progress | PR #6 merged (problem-service); judge on `phase-2/judge-service`. |
-| 3 Battle + Realtime                    | ⬜             |                                                                   |
-| 4 Rating / Leaderboard / Notifications | ⬜             |                                                                   |
-| 5 Frontend polish                      | ⬜             |                                                                   |
-| 6 Hardening                            | ⬜             |                                                                   |
-| 7 AI                                   | ⬜             |                                                                   |
-| 8 Migration + Cutover                  | ⬜             |                                                                   |
+| Phase                                  | Status         | Notes / links                                            |
+| -------------------------------------- | -------------- | -------------------------------------------------------- |
+| 0 Foundation                           | ✅ Done        | PR #1 merged 2026-11-10.                                 |
+| 1 Identity / User / Gateway / Web auth | ✅ Done        | PRs #2–#4 merged; web on `phase-1/web` (PR #5).          |
+| 2 Problems + Judge                     | 🟡 In progress | PRs #6, #7 merged; calibration on `phase-2/calibration`. |
+| 3 Battle + Realtime                    | ⬜             |                                                          |
+| 4 Rating / Leaderboard / Notifications | ⬜             |                                                          |
+| 5 Frontend polish                      | ⬜             |                                                          |
+| 6 Hardening                            | ⬜             |                                                          |
+| 7 AI                                   | ⬜             |                                                          |
+| 8 Migration + Cutover                  | ⬜             |                                                          |
 
 ### Resume here (Phase 1 complete, 2026-11-11)
 
@@ -2012,12 +2012,12 @@ Phase 0 is merged (PR #1): root config, `@cb/contracts`, the platform libs in `p
 - `judge-core` verdict logic: `requestLimits` (plan §14.5 table), `classifyRun`, `judgeFile` (checker + near-miss flag) and `decide` (wait / rerun / next stage / final).
 - `apps/judge-service` (port 4005): `Judge0HttpExecutor` (RapidAPI or token auth, base64, batch, breaker), language ids resolved from `/languages`, intake gates (language, published problem, per-match cap, unchanged code, verdict cache, budget + match reserve, breaker), staged judging with fail-fast, near-miss TLE and IE reruns, poll and callback modes (`/api/v1/hooks/judge0/:runId?sig=` HMAC + token), daily budget in Postgres, `/internal/capacity`, created/progress/judged events, stuck-submission sweeper. 20 integration tests against fake-judge0 (every verdict, both modes, budget, cache, 5xx recovery). Verified in dev: author a problem as problem_setter and judge AC/CE through web proxy → gateway → judge → fake-judge0.
 - fake-judge0 gained `timePerKb` and `wrongCase` directives.
+- Calibration (branch `phase-2/calibration`): judge-service has an internal `calibrate` mode (`POST/GET /internal/calibrations`, idempotent by `requestKey`) that runs every file in one stage with a CPU override, never reruns near misses, emits no events and keeps a capacity reserve for matches. problem-service adds the `calibrations` table, `POST /admin/problems/:id/calibrate` (needs files and a C++ AC reference), and the `problem-calibrate` worker job: run each reference at 15 s, poll, apply the §14.7 rules (pure `calibrate()`, 5 unit tests), then `applyCalibration` or a failed report with readable problems. The admin view shows the latest report. 23 judge + 14 problem integration tests. Verified in dev through the web proxy: author → calibrate (passed, limits cpp 1000 / python 1500 / java 1200 ms) → publish → player AC and WA (failing file and case reported).
 
 **Remaining for Phase 2** (in this order):
 
-1. `problem-calibrate` job (problem-service worker) using the judge, then publish end to end.
-2. Web admin authoring UI.
-3. Phase 2 DoD with fake-judge0, then ≤ 20 real Judge0 calls.
+1. Web admin authoring UI.
+2. Phase 2 DoD with fake-judge0, then ≤ 20 real Judge0 calls.
 
 Deferred: an identity admin endpoint to change roles (the `identity.user.role_changed.v1` contract exists); avatar upload UI and profile editing page; Storybook for `packages/ui` (Phase 5); E2E in CI (needs the compose stack in CI, Phase 6). Avatar uploads need `CLOUDINARY_*` env vars from the owner.
 
@@ -2039,3 +2039,4 @@ Deferred: an identity admin endpoint to change roles (the `identity.user.role_ch
 - 2026-11-11: Problem decisions. Test packs and reference code are stored as content-addressed blobs in problem_db (`blobs`, key `sha256/<hex>`) behind a `BlobStore` interface instead of R2 (R2 needs a payment method on the account; ₹0 target); the judge fetches them through `/internal/blobs` with a service token. Up to 4 files per problem (ordinal 1–4). Statement edits keep a problem published; test or limit changes bump `version`, clear calibration and unpublish. Publish bumps `version` too. Selection re-checks for a concurrent selection before answering NO_UNSEEN_PROBLEM.
 - 2026-11-11: The browser talks only to Next.js. A route handler proxy replaces the `/api` rewrite (owner's call: no backend endpoints exposed). It forwards method, path, query, headers and body, keeps each `Set-Cookie` separate, and maps gateway failures to 502/504 in the API error format. No extra shared-secret header: the gateway is simply not reachable from outside. Realtime (Phase 3) must respect the same rule; decide hosting (Next on the VM vs Vercel) before building it.
 - 2026-11-11: Judge decisions. The daily budget and the verdict cache live in Postgres (atomic `UPDATE … RETURNING`, indexed lookup) instead of Redis, so Redis stays off the correctness path. One `judge-poll` job ("sync") both dispatches pending runs and fetches results, so retries after Judge0 errors and polling share one schedule. Default `JUDGE0_MODE=poll` (no public URL needed); callbacks come through the public web origin at `/api/v1/hooks/judge0/:runId?sig=`. Custom input is file 0 of a Run and has no verdict. Starting a submission must fit the budget; continuing one (stage 2, reruns) may overdraw slightly. `submissions` isn't partitioned yet (Phase 6). The judge spec now includes the problem status; only problem setters can submit to drafts.
+- 2026-11-10: Calibration decisions. Reference runs go through judge-service's internal `calibrate` mode instead of calling Judge0 from problem-service, so budget, breaker, blobs and checkers stay in one place. Each run asks for 15 s CPU (capped at the instance maximum) and records per-file times; limits are 3 × the slowest AC time (own language if it has an AC reference, else C++ × `LANGUAGE_TIME_FACTORS`, now shared in `@cb/contracts/constants`), rounded up to 100 ms, clamped to [1000 ms, instance max]. `NO_CPP_BASELINE` is only raised when no C++ AC reference ran on a file (a failing one is already `REFERENCE_FAILED`). A version change during calibration fails it with `PROBLEM_CHANGED`. problem-service now needs Redis (`REDIS_URL`) for its BullMQ worker.

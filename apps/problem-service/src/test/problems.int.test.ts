@@ -4,7 +4,10 @@ import { ensureTopics, outbox } from '@cb/events';
 import type { HttpServer } from '@cb/http-server';
 import { newId } from '@cb/ids';
 import { createLogger } from '@cb/logger';
-import { startPostgres, startRedpanda, waitFor, type Started } from '@cb/testing';
+import { startPostgres, startRedis, startRedpanda, waitFor, type Started } from '@cb/testing';
+import type { CalibrationRequest, CalibrationResult } from '@cb/contracts';
+import type { JudgeClient } from '../modules/calibration/judge-client.js';
+import { startWorker, type WorkerHandle } from '../worker-runtime.js';
 import { and, eq, isNull } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../app.js';
@@ -17,6 +20,8 @@ const logger = createLogger({ service: 'problem-int', level: 'silent' });
 const SECRET = 'problem-test-internal-secret-0123456789';
 let pg: Started<{ url: string }>;
 let rp: Started<{ brokers: string[] }>;
+let redis: Started<{ url: string }>;
+let worker: WorkerHandle;
 let infra: Infra;
 let app: HttpServer;
 let signer: TokenSigner;
@@ -25,17 +30,23 @@ let player: string;
 let svcToken: string;
 
 beforeAll(async () => {
-  [pg, rp] = await Promise.all([startPostgres(), startRedpanda()]);
+  [pg, rp, redis] = await Promise.all([startPostgres(), startRedpanda(), startRedis()]);
   const env = readEnv({
     NODE_ENV: 'test',
     DATABASE_URL: pg.value.url,
     KAFKA_BROKERS: rp.value.brokers.join(','),
+    REDIS_URL: redis.value.url,
     INTERNAL_SERVICE_SECRET: SECRET,
     SELF_URL: 'http://problem-service:4004',
   });
   await migrate(env.DATABASE_URL);
   signer = await TokenSigner.create([await generateSigningKey('t')]);
-  infra = await createInfra(env, logger, { verifier: new JwtVerifier({ jwks: signer.publicJwks() }) });
+  infra = await createInfra(env, logger, {
+    verifier: new JwtVerifier({ jwks: signer.publicJwks() }),
+    judge: stubJudge,
+    calibrationPollMs: 50,
+  });
+  worker = await startWorker(infra);
   await ensureTopics(infra.kafka, SERVICE_TOPICS);
   app = await buildApp(infra);
   setter = (await signer.signAccess({ userId: newId(), role: 'problem_setter', emailVerified: true }, 900))
@@ -45,10 +56,56 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await worker?.stop();
   await app?.close();
   await infra?.close();
-  await Promise.all([pg?.stop(), rp?.stop()]);
+  await Promise.all([pg?.stop(), rp?.stop(), redis?.stop()]);
 });
+
+// ---------------- a scripted judge for calibration ----------------
+
+/**
+ * Reference code is a script: "times:10,120,450" (per-file CPU ms, all AC), "TLE" for a file that
+ * times out, "wrong:2" to fail file 2. Each run "finishes" on its second poll, like a real judge.
+ */
+const calls: CalibrationRequest[] = [];
+const judgeRuns = new Map<string, { req: CalibrationRequest; polls: number }>();
+const stubJudge: JudgeClient = {
+  async startCalibration(req) {
+    calls.push(req);
+    const existing = [...judgeRuns.entries()].find(([, r]) => r.req.requestKey === req.requestKey);
+    const id = existing?.[0] ?? newId();
+    if (!existing) judgeRuns.set(id, { req, polls: 0 });
+    return this.calibration(id);
+  },
+  async calibration(id): Promise<CalibrationResult> {
+    const r = judgeRuns.get(id)!;
+    const spec = await infra.problems.judgeSpec(r.req.problemId);
+    const done = r.polls++ > 0;
+    const times = /times:([\w,]+)/.exec(r.req.code)?.[1]?.split(',') ?? [];
+    const wrong = Number(/wrong:(\d+)/.exec(r.req.code)?.[1] ?? 0);
+    return {
+      id,
+      status: done ? 'done' : 'running',
+      problemVersion: spec.version,
+      cpuLimitMs: Math.min(r.req.cpuLimitMs, 15000),
+      files: done
+        ? spec.files.map((f, i) => {
+            const t = times[i] ?? '10';
+            return {
+              ordinal: f.ordinal,
+              kind: f.kind,
+              verdict:
+                t === 'TLE' ? ('TLE' as const) : f.ordinal === wrong ? ('WA' as const) : ('AC' as const),
+              cpuMs: t === 'TLE' ? 15000 : Number(t),
+              memKb: 1000,
+              failedCase: f.ordinal === wrong ? 1 : null,
+            };
+          })
+        : [],
+    };
+  },
+};
 
 // ---------------- helpers ----------------
 
@@ -307,5 +364,81 @@ describe('internal APIs', () => {
     );
     const types = new Set((await infra.db.db.select().from(outbox).where(and())).map((e) => e.type));
     expect(types).toEqual(new Set(['problem.published.v1', 'problem.updated.v1']));
+  });
+});
+
+describe('calibration', () => {
+  async function ready(
+    refs: { languageKey: string; expectedVerdict: string; code: string }[],
+  ): Promise<AdminProblem> {
+    const p = await create();
+    for (const [ordinal, pack] of Object.entries(PACKS)) {
+      await call('PUT', `/api/v1/admin/problems/${p.id}/test-files/${ordinal}`, setter, pack);
+    }
+    for (const ref of refs)
+      await call('POST', `/api/v1/admin/problems/${p.id}/reference-solutions`, setter, ref);
+    return (await call('GET', `/api/v1/admin/problems/${p.id}`, setter)).json() as AdminProblem;
+  }
+  const finished = (id: string) =>
+    waitFor(
+      async () => {
+        const p = (await call('GET', `/api/v1/admin/problems/${id}`, setter)).json() as AdminProblem;
+        return p.calibration && ['passed', 'failed'].includes(p.calibration.status) ? p : undefined;
+      },
+      { what: 'calibration', timeoutMs: 30_000 },
+    );
+
+  it('runs every reference on every file, sets limits, and then the problem publishes', async () => {
+    const p = await ready([
+      { languageKey: 'cpp', expectedVerdict: 'AC', code: '// times:10,120,450' },
+      { languageKey: 'python', expectedVerdict: 'AC', code: '# times:50,200,900' },
+      { languageKey: 'cpp', expectedVerdict: 'TLE', code: '// times:10,300,TLE' },
+    ]);
+    const r = await call('POST', `/api/v1/admin/problems/${p.id}/calibrate`, setter);
+    expect([r.statusCode, r.json().status]).toEqual([202, 'pending']);
+    // asking again while it runs returns the same calibration
+    expect((await call('POST', `/api/v1/admin/problems/${p.id}/calibrate`, setter)).json().id).toBe(
+      r.json().id,
+    );
+
+    const done = await finished(p.id);
+    expect(done.calibration).toMatchObject({ status: 'passed', problems: [] });
+    expect(done.calibration!.runs).toHaveLength(9);
+    expect(done.calibratedAt).not.toBeNull();
+    const lim = (lang: string, o: number) =>
+      done.limits.find((l) => l.languageKey === lang && l.ordinal === o)?.cpuLimitMs;
+    expect([lim('cpp', 3), lim('python', 3), lim('java', 3)]).toEqual([1400, 2700, 2700]);
+    expect(calls.filter((c) => c.problemId === p.id).map((c) => c.cpuLimitMs)).toEqual([15000, 15000, 15000]);
+
+    const pub = await call('POST', `/api/v1/admin/problems/${p.id}/publish`, setter);
+    expect([pub.statusCode, pub.json().status]).toEqual([200, 'published']);
+  });
+
+  it('fails with readable problems when references misbehave, and publishing stays blocked', async () => {
+    const p = await ready([
+      { languageKey: 'cpp', expectedVerdict: 'AC', code: '// times:10,120,450' },
+      { languageKey: 'cpp', expectedVerdict: 'AC', code: '// a second, wrong one: wrong:2' },
+      { languageKey: 'cpp', expectedVerdict: 'TLE', code: '// times:10,20,30' },
+    ]);
+    await call('POST', `/api/v1/admin/problems/${p.id}/calibrate`, setter);
+    const done = await finished(p.id);
+    expect(done.calibration!.status).toBe('failed');
+    expect(done.calibration!.problems.map((x) => x.code).sort()).toEqual([
+      'REFERENCE_FAILED',
+      'TLE_REFERENCE_TOO_FAST',
+    ]);
+    expect(done.calibratedAt).toBeNull();
+    expect((await call('POST', `/api/v1/admin/problems/${p.id}/publish`, setter)).json().error.code).toBe(
+      'PROBLEM_NOT_PUBLISHABLE',
+    );
+  });
+
+  it('needs test files and a C++ AC reference before it starts', async () => {
+    const p = await create();
+    const r = await call('POST', `/api/v1/admin/problems/${p.id}/calibrate`, setter);
+    expect([r.statusCode, (r.json().error.details as { code: string }[]).map((d) => d.code)]).toEqual([
+      422,
+      ['NO_FILES', 'NO_CPP_AC_REFERENCE'],
+    ]);
   });
 });

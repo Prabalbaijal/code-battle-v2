@@ -13,11 +13,15 @@ export async function buildApp(infra: Infra): Promise<HttpServer> {
     critical: ['db'],
     openapi: { title: 'judge-service', version: '1.0.0' },
   });
-  // Callbacks need the judging pipeline (profiles, instance limits) even in the API process.
+  // Callbacks and calibration views need profiles and instance limits in the API process too.
+  await infra
+    .bootstrapJudge0()
+    .catch((err: unknown) => infra.logger.warn({ err }, 'Judge0 info unavailable at boot'));
   await infra.judging.loadProfiles();
   registerSubmissionRoutes(app, {
     submissions: infra.submissions,
     judging: infra.judging,
+    calibrations: infra.calibrations,
     auth: infra.authHooks,
     idem: createIdempotency({ db: infra.db.db, getOwner: (req) => authUser(req).userId }),
     internalAuth: infra.internalAuth,

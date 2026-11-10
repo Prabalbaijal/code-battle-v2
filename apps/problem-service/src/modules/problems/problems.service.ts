@@ -18,6 +18,7 @@ import { z } from 'zod';
 import type { ProblemRow } from '../../db/schema.js';
 import type { BlobStore } from '../../lib/blobs.js';
 import { decodeCursor, encodeCursor } from '../../lib/cursor.js';
+import { latestCalibration, toReport } from '../calibration/calibration.service.js';
 import { toAdmin, toPublic } from './problems.dto.js';
 import { problemsRepository as repo } from './problems.repository.js';
 import { publishBlockers } from './publish-rules.js';
@@ -309,7 +310,8 @@ export class ProblemService {
       repo.references(ex, p.id),
       repo.limits(ex, p.id),
     ]);
-    return toAdmin(p, files, refs, limits);
+    const cal = await latestCalibration(ex, p.id);
+    return toAdmin(p, files, refs, limits, cal ? toReport(cal) : null);
   }
 
   private async emitUpdated(tx: Tx, p: ProblemRow, change: 'statement' | 'tests' | 'limits' | 'status') {
