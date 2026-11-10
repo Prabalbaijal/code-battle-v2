@@ -4,9 +4,11 @@ import { Button, cn, Skeleton, UserAvatar } from '@cb/ui';
 import { LogOut, Swords } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { canAuthor } from '@/lib/problems';
 import { useLogout, useMe } from '@/lib/session';
 
 const NAV = [{ href: '/friends', label: 'Friends' }];
+const AUTHOR_NAV = [{ href: '/admin/problems', label: 'Problems' }];
 
 export function SiteHeader() {
   const { data: me, isPending } = useMe();
@@ -24,7 +26,7 @@ export function SiteHeader() {
 
         {me && (
           <nav aria-label="Main" className="flex items-center gap-1 text-sm">
-            {NAV.map((n) => (
+            {[...NAV, ...(canAuthor(me) ? AUTHOR_NAV : [])].map((n) => (
               <Link
                 key={n.href}
                 href={n.href}

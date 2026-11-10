@@ -169,6 +169,20 @@ describe('proxying', () => {
     expect(res.headers['ratelimit-limit']).toBe('300');
   });
 
+  it('forwards large bodies sent with expect: 100-continue (curl does this above 1 MB)', async () => {
+    const { token } = await userToken();
+    const res = await gw.inject({
+      method: 'POST',
+      url: '/api/v1/friends/requests',
+      payload: { toUserId: 'x'.repeat(200_000) },
+      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': ip(), expect: '100-continue' },
+    });
+    expect(res.statusCode).toBe(200);
+    const e = res.json() as Echo;
+    expect((e.body as { toUserId: string }).toUserId).toHaveLength(200_000);
+    expect(e.headers.expect).toBeUndefined();
+  });
+
   it('uses the last trusted hop as client IP (no XFF spoofing)', async () => {
     const res = await gw.inject({
       method: 'GET',

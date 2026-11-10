@@ -138,6 +138,8 @@ export async function buildGateway(d: GatewayDeps): Promise<HttpServer> {
   const rewriteRequestHeaders = (req: FastifyRequest, headers: IncomingHttpHeaders): IncomingHttpHeaders => {
     const h: IncomingHttpHeaders = { ...headers };
     for (const name of TRUSTED_HEADERS) delete h[name];
+    // curl and other clients send `expect: 100-continue` for big bodies; undici refuses to forward it
+    delete h.expect;
     h['x-forwarded-for'] = req.ip;
     h['x-forwarded-proto'] = req.protocol;
     h[REQUEST_ID_HEADER] = req.id;

@@ -257,6 +257,8 @@ describe('admin authoring', () => {
       'NO_TLE_REFERENCE',
       'NOT_CALIBRATED',
     ]);
+    // the admin view carries the same checklist, so the UI never re-implements the rules
+    expect(p.publishBlockers).toEqual(r.json().error.details);
   });
 
   it('publishes after calibration (version bump + event), and calibration of a stale version is refused', async () => {
@@ -405,6 +407,7 @@ describe('calibration', () => {
     expect(done.calibration).toMatchObject({ status: 'passed', problems: [] });
     expect(done.calibration!.runs).toHaveLength(9);
     expect(done.calibratedAt).not.toBeNull();
+    expect(done.publishBlockers).toEqual([]);
     const lim = (lang: string, o: number) =>
       done.limits.find((l) => l.languageKey === lang && l.ordinal === o)?.cpuLimitMs;
     expect([lim('cpp', 3), lim('python', 3), lim('java', 3)]).toEqual([1400, 2700, 2700]);

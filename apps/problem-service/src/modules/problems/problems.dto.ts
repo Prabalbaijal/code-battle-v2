@@ -1,4 +1,10 @@
-import type { AdminProblem, CalibrationReport, LanguageKey, PublicProblem } from '@cb/contracts';
+import type {
+  AdminProblem,
+  CalibrationReport,
+  LanguageKey,
+  PublicProblem,
+  PublishBlocker,
+} from '@cb/contracts';
 import type { LimitRow, ProblemRow, ReferenceSolutionRow, TestFileRow } from '../../db/schema.js';
 
 /** Largest CPU limit per language across files (what the statement shows). */
@@ -32,7 +38,8 @@ export const toAdmin = (
   files: TestFileRow[],
   refs: ReferenceSolutionRow[],
   limits: LimitRow[],
-  calibration: CalibrationReport | null = null,
+  calibration: CalibrationReport | null,
+  publishBlockers: PublishBlocker[],
 ): AdminProblem => ({
   ...toPublic(p, limits),
   status: p.status,
@@ -63,4 +70,5 @@ export const toAdmin = (
     cpuLimitMs: l.cpuLimitMs,
   })),
   calibration,
+  publishBlockers,
 });

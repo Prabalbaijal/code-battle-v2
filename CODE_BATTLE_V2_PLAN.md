@@ -1809,7 +1809,7 @@ Script: `scripts/migrate-v1/` (TS). It is **idempotent** (upserts on `legacy_mon
 - [ ] problem-service: schema, admin CRUD, test file upload to R2 (with size rules), reference solutions, `problem-calibrate`, publish rules, judge-spec internal API, selection API (idempotent), seen consumer.
 - [ ] judge-service: `language_profiles` bootstrap from `/languages`, `/config_info` validation, submission intake (gates, cache, idempotency), `judge-submit`/`judge-run`/`judge-poll`, callback endpoint (HMAC), staged batching, classification + checkers (`domain/judge-core`), near-miss rerun, IE retry, budget counter, circuit breaker, capacity endpoint, drift job, events.
 - [ ] Postgres-polling degraded mode for the judge worker (§18.1).
-- [ ] Web: admin problem authoring UI (statement editor with markdown preview, test files, reference solutions, calibration report, publish).
+- [x] Web: admin problem authoring UI (statement editor with markdown preview, test files, reference solutions, calibration report, publish).
 
 **DoD:**
 
@@ -1966,17 +1966,17 @@ Checked on **2026-11-08**. Re-check these before decisions that depend on them:
 
 ## 29. Progress tracker (update as you go)
 
-| Phase                                  | Status         | Notes / links                                            |
-| -------------------------------------- | -------------- | -------------------------------------------------------- |
-| 0 Foundation                           | ✅ Done        | PR #1 merged 2026-11-10.                                 |
-| 1 Identity / User / Gateway / Web auth | ✅ Done        | PRs #2–#4 merged; web on `phase-1/web` (PR #5).          |
-| 2 Problems + Judge                     | 🟡 In progress | PRs #6, #7 merged; calibration on `phase-2/calibration`. |
-| 3 Battle + Realtime                    | ⬜             |                                                          |
-| 4 Rating / Leaderboard / Notifications | ⬜             |                                                          |
-| 5 Frontend polish                      | ⬜             |                                                          |
-| 6 Hardening                            | ⬜             |                                                          |
-| 7 AI                                   | ⬜             |                                                          |
-| 8 Migration + Cutover                  | ⬜             |                                                          |
+| Phase                                  | Status         | Notes / links                                     |
+| -------------------------------------- | -------------- | ------------------------------------------------- |
+| 0 Foundation                           | ✅ Done        | PR #1 merged 2026-11-10.                          |
+| 1 Identity / User / Gateway / Web auth | ✅ Done        | PRs #2–#4 merged; web on `phase-1/web` (PR #5).   |
+| 2 Problems + Judge                     | 🟡 In progress | PRs #6–#8 merged; admin UI on `phase-2/admin-ui`. |
+| 3 Battle + Realtime                    | ⬜             |                                                   |
+| 4 Rating / Leaderboard / Notifications | ⬜             |                                                   |
+| 5 Frontend polish                      | ⬜             |                                                   |
+| 6 Hardening                            | ⬜             |                                                   |
+| 7 AI                                   | ⬜             |                                                   |
+| 8 Migration + Cutover                  | ⬜             |                                                   |
 
 ### Resume here (Phase 1 complete, 2026-11-11)
 
@@ -2012,12 +2012,16 @@ Phase 0 is merged (PR #1): root config, `@cb/contracts`, the platform libs in `p
 - `judge-core` verdict logic: `requestLimits` (plan §14.5 table), `classifyRun`, `judgeFile` (checker + near-miss flag) and `decide` (wait / rerun / next stage / final).
 - `apps/judge-service` (port 4005): `Judge0HttpExecutor` (RapidAPI or token auth, base64, batch, breaker), language ids resolved from `/languages`, intake gates (language, published problem, per-match cap, unchanged code, verdict cache, budget + match reserve, breaker), staged judging with fail-fast, near-miss TLE and IE reruns, poll and callback modes (`/api/v1/hooks/judge0/:runId?sig=` HMAC + token), daily budget in Postgres, `/internal/capacity`, created/progress/judged events, stuck-submission sweeper. 20 integration tests against fake-judge0 (every verdict, both modes, budget, cache, 5xx recovery). Verified in dev: author a problem as problem_setter and judge AC/CE through web proxy → gateway → judge → fake-judge0.
 - fake-judge0 gained `timePerKb` and `wrongCase` directives.
-- Calibration (branch `phase-2/calibration`): judge-service has an internal `calibrate` mode (`POST/GET /internal/calibrations`, idempotent by `requestKey`) that runs every file in one stage with a CPU override, never reruns near misses, emits no events and keeps a capacity reserve for matches. problem-service adds the `calibrations` table, `POST /admin/problems/:id/calibrate` (needs files and a C++ AC reference), and the `problem-calibrate` worker job: run each reference at 15 s, poll, apply the §14.7 rules (pure `calibrate()`, 5 unit tests), then `applyCalibration` or a failed report with readable problems. The admin view shows the latest report. 23 judge + 14 problem integration tests. Verified in dev through the web proxy: author → calibrate (passed, limits cpp 1000 / python 1500 / java 1200 ms) → publish → player AC and WA (failing file and case reported).
+- Calibration (branch `phase-2/calibration`): judge-service has an internal `calibrate` mode (`POST/GET /internal/calibrations`, idempotent by `requestKey`) that runs every file in one stage with a CPU override, never reruns near misses, emits no events and keeps a capacity reserve for matches. problem-service adds the `calibrations` table, `POST /admin/problems/:id/calibrate` (needs files and a C++ AC reference), and the `problem-calibrate` worker job: run each reference at 15 s, poll, apply the §14.7 rules (pure `calibrate()`, 5 unit tests), then `applyCalibration` or a failed report with readable problems. The admin view shows the latest report. 23 judge + 14 problem integration tests. Verified in dev through the web proxy: author → calibrate (passed, limits cpp 1000 / python 1500 / java 1200 ms) → publish → player AC and WA (failing file and case reported). PR #8.
+- Admin authoring UI (branch `phase-2/admin-ui`): `/admin/problems` (list), `/admin/problems/new`, `/admin/problems/[id]` with Statement / Tests / References / Calibration tabs and a publish checklist. Statement fields are markdown with live preview (GFM + KaTeX math); edits PATCH only the changed fields and warn when a limit change will void calibration. Test files are uploaded per slot (1–4) with size checks before sending and the server's pack errors listed. Calibration polls every 2 s while running and shows per-reference runs and the limits in use. The admin view now includes `publishBlockers` (the publish endpoint's own rules). Problem authoring limits live in `PROBLEM_LIMITS` (`@cb/contracts/constants`), shared by the zod schemas and the forms. Playwright E2E (`e2e/admin-problems.spec.ts`): non-setter turned away → role granted → statement with preview → bad pack explained → 3 files → C++ AC + TLE references → calibration passes → publish → statement edit stays published, memory change goes back to draft.
+- Fix: the gateway and the Next proxy drop the `Expect` header. curl sends `Expect: 100-continue` for bodies over 1 MB and undici/fetch refuse it, so large test-file uploads from scripts got 502.
 
 **Remaining for Phase 2** (in this order):
 
-1. Web admin authoring UI.
-2. Phase 2 DoD with fake-judge0, then ≤ 20 real Judge0 calls.
+1. Judge drift job (§14.8) and the Postgres-polling degraded mode for judge workers (§18.1).
+2. Phase 2 DoD with ≤ 20 real Judge0 calls (needs RapidAPI Judge0 CE credentials in `.env`).
+
+The `battle.match.started.v1` "seen" consumer in problem-service waits for battle-service (Phase 3).
 
 Deferred: an identity admin endpoint to change roles (the `identity.user.role_changed.v1` contract exists); avatar upload UI and profile editing page; Storybook for `packages/ui` (Phase 5); E2E in CI (needs the compose stack in CI, Phase 6). Avatar uploads need `CLOUDINARY_*` env vars from the owner.
 
@@ -2040,3 +2044,4 @@ Deferred: an identity admin endpoint to change roles (the `identity.user.role_ch
 - 2026-11-11: The browser talks only to Next.js. A route handler proxy replaces the `/api` rewrite (owner's call: no backend endpoints exposed). It forwards method, path, query, headers and body, keeps each `Set-Cookie` separate, and maps gateway failures to 502/504 in the API error format. No extra shared-secret header: the gateway is simply not reachable from outside. Realtime (Phase 3) must respect the same rule; decide hosting (Next on the VM vs Vercel) before building it.
 - 2026-11-11: Judge decisions. The daily budget and the verdict cache live in Postgres (atomic `UPDATE … RETURNING`, indexed lookup) instead of Redis, so Redis stays off the correctness path. One `judge-poll` job ("sync") both dispatches pending runs and fetches results, so retries after Judge0 errors and polling share one schedule. Default `JUDGE0_MODE=poll` (no public URL needed); callbacks come through the public web origin at `/api/v1/hooks/judge0/:runId?sig=`. Custom input is file 0 of a Run and has no verdict. Starting a submission must fit the budget; continuing one (stage 2, reruns) may overdraw slightly. `submissions` isn't partitioned yet (Phase 6). The judge spec now includes the problem status; only problem setters can submit to drafts.
 - 2026-11-10: Calibration decisions. Reference runs go through judge-service's internal `calibrate` mode instead of calling Judge0 from problem-service, so budget, breaker, blobs and checkers stay in one place. Each run asks for 15 s CPU (capped at the instance maximum) and records per-file times; limits are 3 × the slowest AC time (own language if it has an AC reference, else C++ × `LANGUAGE_TIME_FACTORS`, now shared in `@cb/contracts/constants`), rounded up to 100 ms, clamped to [1000 ms, instance max]. `NO_CPP_BASELINE` is only raised when no C++ AC reference ran on a file (a failing one is already `REFERENCE_FAILED`). A version change during calibration fails it with `PROBLEM_CHANGED`. problem-service now needs Redis (`REDIS_URL`) for its BullMQ worker.
+- 2026-11-11: Admin UI decisions. Admin pages are client-rendered behind the `src/proxy.ts` hint guard and a role check; the gateway and problem-service stay the authority (plan §21 said SSR; nothing on these pages needs SEO or a fast first paint). Statements render with react-markdown + remark-gfm + remark-math + rehype-katex: no raw HTML, `javascript:` links dropped, KaTeX `trust: false`; the same component will render statements for players. Reference code is a plain textarea for now; CodeMirror arrives with the battle room (Phase 3). The publish checklist comes from the server (`publishBlockers` on the admin view) instead of re-implementing the rules in the browser. Both proxies drop the `Expect` header.

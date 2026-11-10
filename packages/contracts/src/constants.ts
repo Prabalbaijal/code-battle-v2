@@ -84,3 +84,27 @@ export const LANGUAGE_TIME_FACTORS: Record<LanguageKey, number> = {
   python: 3.0,
   javascript: 1.5,
 };
+
+/** Problem authoring limits: the API's zod schemas and the admin forms both read these. */
+export const PROBLEM_LIMITS = {
+  slug: { min: 3, max: 80 },
+  title: { min: 3, max: 120 },
+  statementMd: 20_000,
+  formatMd: 5_000,
+  constraints: { count: 20, length: 300 },
+  examples: { min: 1, max: 10, text: 4_000, explanation: 2_000 },
+  tags: { count: 10, length: 30 },
+  memoryKb: { min: 16 * 1024, max: 256 * 1024, default: 192 * 1024 },
+  outputKb: { min: 64, max: 4 * 1024, default: 1024 },
+  /** Test files 1–4 (plan §14.2); judge-core enforces the same byte limits. */
+  testFiles: 4,
+  testInputBytes: 2 * 1024 * 1024,
+  testOutputBytes: 512 * 1024,
+} as const;
+
+export const PACK_KINDS = ['sample', 'small', 'large'] as const;
+export type PackKind = (typeof PACK_KINDS)[number];
+export const CHECKER_TYPES = ['tokens', 'float', 'exact'] as const;
+export type CheckerType = (typeof CHECKER_TYPES)[number];
+export const REFERENCE_VERDICTS = ['AC', 'TLE', 'WA'] as const;
+export type ReferenceVerdict = (typeof REFERENCE_VERDICTS)[number];
