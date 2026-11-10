@@ -261,6 +261,7 @@ export class ProblemService {
     return {
       problemId: p.id,
       version: p.version,
+      status: p.status,
       checker: { type: p.checkerType, eps: p.floatEps },
       memoryLimitKb: p.memoryLimitKb,
       outputLimitKb: p.outputLimitKb,

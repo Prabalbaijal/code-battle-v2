@@ -1966,17 +1966,17 @@ Checked on **2026-11-08**. Re-check these before decisions that depend on them:
 
 ## 29. Progress tracker (update as you go)
 
-| Phase                                  | Status         | Notes / links                                        |
-| -------------------------------------- | -------------- | ---------------------------------------------------- |
-| 0 Foundation                           | ✅ Done        | PR #1 merged 2026-11-10.                             |
-| 1 Identity / User / Gateway / Web auth | ✅ Done        | PRs #2–#4 merged; web on `phase-1/web` (PR #5).      |
-| 2 Problems + Judge                     | 🟡 In progress | Branch `phase-2/problem-service`. See "Resume here". |
-| 3 Battle + Realtime                    | ⬜             |                                                      |
-| 4 Rating / Leaderboard / Notifications | ⬜             |                                                      |
-| 5 Frontend polish                      | ⬜             |                                                      |
-| 6 Hardening                            | ⬜             |                                                      |
-| 7 AI                                   | ⬜             |                                                      |
-| 8 Migration + Cutover                  | ⬜             |                                                      |
+| Phase                                  | Status         | Notes / links                                                     |
+| -------------------------------------- | -------------- | ----------------------------------------------------------------- |
+| 0 Foundation                           | ✅ Done        | PR #1 merged 2026-11-10.                                          |
+| 1 Identity / User / Gateway / Web auth | ✅ Done        | PRs #2–#4 merged; web on `phase-1/web` (PR #5).                   |
+| 2 Problems + Judge                     | 🟡 In progress | PR #6 merged (problem-service); judge on `phase-2/judge-service`. |
+| 3 Battle + Realtime                    | ⬜             |                                                                   |
+| 4 Rating / Leaderboard / Notifications | ⬜             |                                                                   |
+| 5 Frontend polish                      | ⬜             |                                                                   |
+| 6 Hardening                            | ⬜             |                                                                   |
+| 7 AI                                   | ⬜             |                                                                   |
+| 8 Migration + Cutover                  | ⬜             |                                                                   |
 
 ### Resume here (Phase 1 complete, 2026-11-11)
 
@@ -2009,13 +2009,15 @@ Phase 0 is merged (PR #1): root config, `@cb/contracts`, the platform libs in `p
 - `apps/problem-service` (port 4004): admin authoring (create, edit, test files 1–4 validated with judge-core, reference solutions, publish with an all-blockers checklist, archive), public view by slug (per-language limits, never hidden tests), `/internal/selections` (idempotent per match, race-safe), `/internal/problems/:id/judge-spec` and `/internal/blobs/sha256/:hex`. Editing tests or verdict-affecting limits bumps `version`, voids calibration and unpublishes. `applyCalibration` is ready for the calibrate job. 11 integration tests.
 - Gateway routes `/api/v1/problems` (optional auth) and `/api/v1/admin/problems` (problem_setter).
 - `pnpm --filter @cb/identity-service set-role <username> <role>` bootstraps roles.
+- `judge-core` verdict logic: `requestLimits` (plan §14.5 table), `classifyRun`, `judgeFile` (checker + near-miss flag) and `decide` (wait / rerun / next stage / final).
+- `apps/judge-service` (port 4005): `Judge0HttpExecutor` (RapidAPI or token auth, base64, batch, breaker), language ids resolved from `/languages`, intake gates (language, published problem, per-match cap, unchanged code, verdict cache, budget + match reserve, breaker), staged judging with fail-fast, near-miss TLE and IE reruns, poll and callback modes (`/api/v1/hooks/judge0/:runId?sig=` HMAC + token), daily budget in Postgres, `/internal/capacity`, created/progress/judged events, stuck-submission sweeper. 20 integration tests against fake-judge0 (every verdict, both modes, budget, cache, 5xx recovery). Verified in dev: author a problem as problem_setter and judge AC/CE through web proxy → gateway → judge → fake-judge0.
+- fake-judge0 gained `timePerKb` and `wrongCase` directives.
 
 **Remaining for Phase 2** (in this order):
 
-1. judge-service: language profiles from `/languages`, `/config_info` checks, submission intake, staged batches, callbacks + polling, verdict classification (judge-core), budget, breaker, events.
-2. `problem-calibrate` job (problem-service worker) using the judge, then publish end to end.
-3. Web admin authoring UI.
-4. Phase 2 DoD with fake-judge0, then ≤ 20 real Judge0 calls.
+1. `problem-calibrate` job (problem-service worker) using the judge, then publish end to end.
+2. Web admin authoring UI.
+3. Phase 2 DoD with fake-judge0, then ≤ 20 real Judge0 calls.
 
 Deferred: an identity admin endpoint to change roles (the `identity.user.role_changed.v1` contract exists); avatar upload UI and profile editing page; Storybook for `packages/ui` (Phase 5); E2E in CI (needs the compose stack in CI, Phase 6). Avatar uploads need `CLOUDINARY_*` env vars from the owner.
 
@@ -2036,3 +2038,4 @@ Deferred: an identity admin endpoint to change roles (the `identity.user.role_ch
 - 2026-11-11: Web decisions. No zod in the browser: it doesn't tree-shake (~45 KB gzip), so `@cb/contracts/constants` holds zod-free rules that both the server's zod schemas and the web's react-hook-form rules use. Forms use react-hook-form (owner's choice) with built-in rules, not the zod resolver. `cb_s` (session hint) is readable by JS so the app skips `/auth/me` for visitors; tokens stay httpOnly. Own Tabs and Avatar replace Radix ones (−10 KB). Next 16 renamed middleware to `src/proxy.ts`. Mutating the session never calls `queryClient.clear()`: it detached mounted observers (found by E2E: the verify banner stayed stale after login).
 - 2026-11-11: Problem decisions. Test packs and reference code are stored as content-addressed blobs in problem_db (`blobs`, key `sha256/<hex>`) behind a `BlobStore` interface instead of R2 (R2 needs a payment method on the account; ₹0 target); the judge fetches them through `/internal/blobs` with a service token. Up to 4 files per problem (ordinal 1–4). Statement edits keep a problem published; test or limit changes bump `version`, clear calibration and unpublish. Publish bumps `version` too. Selection re-checks for a concurrent selection before answering NO_UNSEEN_PROBLEM.
 - 2026-11-11: The browser talks only to Next.js. A route handler proxy replaces the `/api` rewrite (owner's call: no backend endpoints exposed). It forwards method, path, query, headers and body, keeps each `Set-Cookie` separate, and maps gateway failures to 502/504 in the API error format. No extra shared-secret header: the gateway is simply not reachable from outside. Realtime (Phase 3) must respect the same rule; decide hosting (Next on the VM vs Vercel) before building it.
+- 2026-11-11: Judge decisions. The daily budget and the verdict cache live in Postgres (atomic `UPDATE … RETURNING`, indexed lookup) instead of Redis, so Redis stays off the correctness path. One `judge-poll` job ("sync") both dispatches pending runs and fetches results, so retries after Judge0 errors and polling share one schedule. Default `JUDGE0_MODE=poll` (no public URL needed); callbacks come through the public web origin at `/api/v1/hooks/judge0/:runId?sig=`. Custom input is file 0 of a Run and has no verdict. Starting a submission must fit the budget; continuing one (stage 2, reruns) may overdraw slightly. `submissions` isn't partitioned yet (Phase 6). The judge spec now includes the problem status; only problem setters can submit to drafts.

@@ -186,6 +186,91 @@ importers:
         specifier: ^0.31.11
         version: 0.31.11
 
+  apps/judge-service:
+    dependencies:
+      '@cb/auth':
+        specifier: workspace:*
+        version: link:../../packages/libs/auth
+      '@cb/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@cb/db':
+        specifier: workspace:*
+        version: link:../../packages/libs/db
+      '@cb/env':
+        specifier: workspace:*
+        version: link:../../packages/libs/env
+      '@cb/errors':
+        specifier: workspace:*
+        version: link:../../packages/libs/errors
+      '@cb/events':
+        specifier: workspace:*
+        version: link:../../packages/libs/events
+      '@cb/http-client':
+        specifier: workspace:*
+        version: link:../../packages/libs/http-client
+      '@cb/http-server':
+        specifier: workspace:*
+        version: link:../../packages/libs/http-server
+      '@cb/idempotency':
+        specifier: workspace:*
+        version: link:../../packages/libs/idempotency
+      '@cb/ids':
+        specifier: workspace:*
+        version: link:../../packages/libs/ids
+      '@cb/judge-core':
+        specifier: workspace:*
+        version: link:../../packages/domain/judge-core
+      '@cb/logger':
+        specifier: workspace:*
+        version: link:../../packages/libs/logger
+      '@cb/queue':
+        specifier: workspace:*
+        version: link:../../packages/libs/queue
+      '@cb/rate-limit':
+        specifier: workspace:*
+        version: link:../../packages/libs/rate-limit
+      '@cb/redis':
+        specifier: workspace:*
+        version: link:../../packages/libs/redis
+      '@cb/resilience':
+        specifier: workspace:*
+        version: link:../../packages/libs/resilience
+      '@cb/telemetry':
+        specifier: workspace:*
+        version: link:../../packages/libs/telemetry
+      bullmq:
+        specifier: ^6.7.2
+        version: 6.7.2(ioredis@6.0.0)(pg@8.23.1)
+      drizzle-orm:
+        specifier: ^0.45.4
+        version: 0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(pg@8.23.1)
+      fastify:
+        specifier: ^5.12.8
+        version: 5.12.8
+      kafkajs:
+        specifier: ^2.2.4
+        version: 2.2.4
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
+    devDependencies:
+      '@cb/eslint-config':
+        specifier: workspace:*
+        version: link:../../packages/config/eslint-config
+      '@cb/testing':
+        specifier: workspace:*
+        version: link:../../packages/libs/testing
+      '@types/pg':
+        specifier: ^8.23.1
+        version: 8.23.1
+      drizzle-kit:
+        specifier: ^0.31.11
+        version: 0.31.11
+      pg:
+        specifier: ^8.23.1
+        version: 8.23.1
+
   apps/notification-service:
     dependencies:
       '@cb/contracts':
