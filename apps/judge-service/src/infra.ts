@@ -17,6 +17,7 @@ import { CalibrationService } from './modules/calibrations/calibrations.service.
 import { JudgingService } from './modules/judging/judging.service.js';
 import { SubmissionService } from './modules/submissions/submissions.service.js';
 import { ProblemServiceSource, type ProblemSource } from './problems/problem-source.js';
+import { HttpMatchParticipation, type MatchParticipation } from './battle/participation.js';
 import { DriftService } from './modules/drift/drift.service.js';
 import { QUEUES } from './queues.js';
 
@@ -53,6 +54,7 @@ export interface Infra {
 export interface InfraOptions {
   verifier?: JwtVerifier;
   problems?: ProblemSource;
+  participation?: MatchParticipation;
   executor?: CodeExecutor;
   /** Tests replace the per-user submit/run limits. */
   limits?: { submit: RateLimiter; run: RateLimiter; throttledRun?: RateLimiter };
@@ -164,6 +166,13 @@ export async function createInfra(env: Env, logger: Logger, opts: InfraOptions =
     outbox,
     problems,
     executor,
+    participation:
+      opts.participation ??
+      new HttpMatchParticipation({
+        baseUrl: env.BATTLE_SERVICE_URL,
+        secret: env.INTERNAL_SERVICE_SECRET,
+        service: env.SERVICE_NAME,
+      }),
     dailyBudget: env.JUDGE0_DAILY_BUDGET,
     matchReserveCalls: env.MATCH_RESERVE_CALLS,
     maxSubmitsPerMatch: env.MAX_SUBMITS_PER_MATCH,

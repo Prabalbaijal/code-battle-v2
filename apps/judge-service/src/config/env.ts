@@ -15,6 +15,8 @@ export const envSchema = baseEnvSchema
     JWKS_URL: z.string().url().default('http://localhost:4001/.well-known/jwks.json'),
     INTERNAL_SERVICE_SECRET: z.string().min(MIN_INTERNAL_SECRET_LENGTH),
     PROBLEM_SERVICE_URL: z.string().url().default('http://localhost:4004'),
+    /** Match participation for intake (plan §11.3). */
+    BATTLE_SERVICE_URL: z.string().url().default('http://localhost:4006'),
     CSRF_REQUIRED: envBool(true),
 
     /** Judge0 API base, e.g. https://judge0-ce.p.rapidapi.com or http://localhost:2358 (fake). */

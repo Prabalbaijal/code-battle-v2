@@ -22,6 +22,7 @@ export const envSchema = baseEnvSchema.extend({
   SERVICE_URL_USER: z.string().url().default('http://localhost:4002'),
   SERVICE_URL_PROBLEM: z.string().url().default('http://localhost:4004'),
   SERVICE_URL_JUDGE: z.string().url().default('http://localhost:4005'),
+  SERVICE_URL_BATTLE: z.string().url().default('http://localhost:4006'),
 });
 
 export type Env = z.infer<typeof envSchema>;
