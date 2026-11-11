@@ -475,6 +475,70 @@ importers:
         specifier: ^0.31.11
         version: 0.31.11
 
+  apps/rating-service:
+    dependencies:
+      '@cb/auth':
+        specifier: workspace:*
+        version: link:../../packages/libs/auth
+      '@cb/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@cb/db':
+        specifier: workspace:*
+        version: link:../../packages/libs/db
+      '@cb/env':
+        specifier: workspace:*
+        version: link:../../packages/libs/env
+      '@cb/errors':
+        specifier: workspace:*
+        version: link:../../packages/libs/errors
+      '@cb/events':
+        specifier: workspace:*
+        version: link:../../packages/libs/events
+      '@cb/http-client':
+        specifier: workspace:*
+        version: link:../../packages/libs/http-client
+      '@cb/http-server':
+        specifier: workspace:*
+        version: link:../../packages/libs/http-server
+      '@cb/ids':
+        specifier: workspace:*
+        version: link:../../packages/libs/ids
+      '@cb/logger':
+        specifier: workspace:*
+        version: link:../../packages/libs/logger
+      '@cb/redis':
+        specifier: workspace:*
+        version: link:../../packages/libs/redis
+      '@cb/scoring':
+        specifier: workspace:*
+        version: link:../../packages/domain/scoring
+      '@cb/telemetry':
+        specifier: workspace:*
+        version: link:../../packages/libs/telemetry
+      drizzle-orm:
+        specifier: ^0.45.4
+        version: 0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(pg@8.23.1)
+      fastify:
+        specifier: ^5.12.8
+        version: 5.12.8
+      kafkajs:
+        specifier: ^2.2.4
+        version: 2.2.4
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
+    devDependencies:
+      '@cb/eslint-config':
+        specifier: workspace:*
+        version: link:../../packages/config/eslint-config
+      '@cb/testing':
+        specifier: workspace:*
+        version: link:../../packages/libs/testing
+      drizzle-kit:
+        specifier: ^0.31.11
+        version: 0.31.11
+
   apps/realtime-service:
     dependencies:
       '@cb/auth':
@@ -802,6 +866,12 @@ importers:
         version: link:../../config/eslint-config
 
   packages/domain/match-rules:
+    devDependencies:
+      '@cb/eslint-config':
+        specifier: workspace:*
+        version: link:../../config/eslint-config
+
+  packages/domain/scoring:
     devDependencies:
       '@cb/eslint-config':
         specifier: workspace:*

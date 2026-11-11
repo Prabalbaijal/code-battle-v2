@@ -119,7 +119,7 @@ export class Hub {
     this.consumer = this.d.kafka.consumer({ groupId: `realtime-${this.d.nodeId}` });
     await this.consumer.connect();
     await this.consumer.subscribe({
-      topics: [TOPICS.battle, TOPICS.judge, TOPICS.user],
+      topics: [TOPICS.battle, TOPICS.judge, TOPICS.user, TOPICS.rating],
       fromBeginning: false,
     });
     await this.consumer.run({

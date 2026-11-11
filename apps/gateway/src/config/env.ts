@@ -23,6 +23,7 @@ export const envSchema = baseEnvSchema.extend({
   SERVICE_URL_PROBLEM: z.string().url().default('http://localhost:4004'),
   SERVICE_URL_JUDGE: z.string().url().default('http://localhost:4005'),
   SERVICE_URL_BATTLE: z.string().url().default('http://localhost:4006'),
+  SERVICE_URL_RATING: z.string().url().default('http://localhost:4007'),
   SERVICE_URL_REALTIME: z.string().url().default('http://localhost:4010'),
 });
 

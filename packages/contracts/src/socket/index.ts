@@ -68,6 +68,8 @@ export interface ServerEvents {
   };
   /** The opponent's activity: no code, no details. */
   'match:opponent-activity': { matchId: string; type: 'submitted' | 'judged'; verdict?: string };
+  /** The player's coins/level changed (after a match). */
+  'stats:updated': { coins: number; level: number; delta: number; matchId: string | null };
   /** The node is shutting down: reconnect (with a new ticket). */
   'server:reconnect': Record<string, never>;
 }

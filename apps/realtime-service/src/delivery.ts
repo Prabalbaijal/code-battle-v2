@@ -1,6 +1,7 @@
 import {
   battleEvents,
   judgeEvents,
+  ratingEvents,
   userEvents,
   type EnvelopeBase,
   type ServerEnvelope,
@@ -149,6 +150,22 @@ export function route(
           deliver(recipients, 'match:aborted', env, { matchId: d.matchId, reason: d.reason }, d.version),
         ],
         effects: [{ kind: 'match-over', matchId: d.matchId, userIds: d.userIds }],
+      };
+    }
+
+    case ratingEvents.statsChangedV1.type: {
+      const d = parse(ratingEvents.statsChangedV1);
+      if (d.reason === 'visibility') return { deliveries: [], effects: [] };
+      return {
+        deliveries: [
+          deliver(recipients, 'stats:updated', env, {
+            coins: d.coins,
+            level: d.level,
+            delta: d.delta,
+            matchId: d.matchId,
+          }),
+        ],
+        effects: [],
       };
     }
 
