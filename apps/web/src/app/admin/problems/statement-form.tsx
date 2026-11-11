@@ -14,7 +14,7 @@ import {
   type UseFormRegister,
 } from 'react-hook-form';
 import { FormError } from '@/components/auth-card';
-import { Markdown } from '@/components/markdown';
+import { LazyMarkdown as Markdown } from '@/components/lazy-markdown';
 import { setApiErrors } from '@/lib/form';
 import { lines, tagList, toValues, type StatementValues } from '@/lib/problem-form';
 

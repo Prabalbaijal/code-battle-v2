@@ -3,7 +3,7 @@
 import { Button, Field, Input } from '@cb/ui';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useForm } from 'react-hook-form';
+import { useLiteForm as useForm } from '@/lib/lite-form';
 import { AuthCard, FormError } from '@/components/auth-card';
 import { rules, setApiErrors } from '@/lib/form';
 import { useRegister } from '@/lib/session';

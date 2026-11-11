@@ -10,8 +10,9 @@ import { useMe } from '@/lib/session';
 
 export function NotificationsView() {
   const { data: me, isPending: mePending } = useMe();
-  const list = useNotifications(!!me);
-  const unread = useUnreadCount(!!me);
+  // the route is session-gated already: fetch in parallel with /auth/me, not after it
+  const list = useNotifications(true);
+  const unread = useUnreadCount(true);
   const readAll = useMarkAllRead();
 
   if (mePending || (me && list.isPending)) {

@@ -36,11 +36,14 @@ export function useMyRank(enabled = true) {
 }
 
 /** One call: profile + coins/level + (own profile) the last 10 matches with real coin changes. */
-export function useProfilePage(username: string) {
+export function useProfilePage(username: string, initial?: ProfilePageView | null) {
   return useQuery({
     queryKey: ratingKeys.profilePage(username),
     queryFn: () => api<ProfilePageView>(`/bff/profile/${encodeURIComponent(username)}`),
     retry: false,
+    // rendered on the server for a fast first paint, then refreshed once in the background (the
+    // server may have seen an expired access cookie and rendered the signed-out view)
+    ...(initial ? { initialData: initial, initialDataUpdatedAt: 0 } : {}),
   });
 }
 

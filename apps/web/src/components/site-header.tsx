@@ -2,7 +2,7 @@
 
 import { Button, cn, Skeleton, UserAvatar } from '@cb/ui';
 import { LogOut, Swords } from 'lucide-react';
-import { NotificationBell } from './notification-bell';
+import { LazyNotificationBell } from './lazy';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { isAdmin } from '@/lib/judge';
@@ -60,7 +60,7 @@ export function SiteHeader() {
             <Skeleton className="h-8 w-24" />
           ) : me ? (
             <>
-              <NotificationBell />
+              <LazyNotificationBell />
               <Link
                 href={`/u/${me.username}`}
                 className="flex items-center gap-2 rounded-md px-2 py-1 text-sm hover:bg-muted"

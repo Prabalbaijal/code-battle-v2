@@ -4,7 +4,7 @@ import type { OnlinePlayer, PresenceStatus } from '@cb/contracts';
 import { Badge, Button, Card, CardContent, Input, Skeleton, UserAvatar } from '@cb/ui';
 import { Search, Swords, Users, X } from 'lucide-react';
 import { useDeferredValue, useEffect, useState } from 'react';
-import { notify } from '@/components/battle-global';
+import { notify } from '@/components/notices';
 import { EmptyState } from '@/components/people';
 import { isApiError, messageFor } from '@/lib/api';
 import {

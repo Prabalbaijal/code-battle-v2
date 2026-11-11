@@ -43,15 +43,15 @@
     --muted-foreground: oklch(0.47 0.02 265);
     --border: oklch(0.9 0.008 265);
     --input: oklch(0.88 0.01 265);
-    /* white on primary 6.6:1; warning/success text ≥ 4.7:1 on background */
+    /* white on primary 6.6:1; status text ≥ 4.5:1 on its own 15% tint (axe-checked) */
     --ring: oklch(0.55 0.22 285);
     --primary: oklch(0.5 0.22 285);
     --primary-foreground: oklch(0.99 0 0);
     --secondary: oklch(0.945 0.01 265);
     --accent-foreground: oklch(0.3 0.05 75);
-    --success: oklch(0.5 0.14 155);
-    --warning: oklch(0.55 0.13 70);
-    --destructive: oklch(0.56 0.21 25);
+    --success: oklch(0.44 0.13 155);
+    --warning: oklch(0.48 0.12 70);
+    --destructive: oklch(0.5 0.2 25);
     --destructive-foreground: oklch(0.99 0 0);
   }
 }
