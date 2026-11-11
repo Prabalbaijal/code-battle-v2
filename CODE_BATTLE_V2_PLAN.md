@@ -1675,7 +1675,7 @@ CREATE TABLE hint_usage (user_id uuid, problem_id uuid, match_id uuid, level sma
 
 | Component       | Where                                                                                                                     | Notes                                                                                                                                                                                                                       |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Web (Next.js)   | **Vercel Hobby**                                                                                                          | Non-commercial use only. Rewrites `/api/*` to the API domain.                                                                                                                                                               |
+| Web (Next.js)   | **Same host, behind Caddy** (decided 2026-11-12; was Vercel Hobby)                                                        | One origin: Caddy serves Next.js and `/socket.io`; the gateway and services stay on the Docker network. No public API domain.                                                                                               |
 | Everything else | **One Oracle Cloud Always Free Ampere A1 VM** (now **2 OCPU / 12 GB**, cut from 4/24 in Aug 2026), Ubuntu, docker compose | ARM64 images. Oracle may reclaim idle Always Free instances, so keep backups (§18.3). If there's no A1 capacity in your region, retry or pick another home region at signup.                                                |
 | Postgres        | **On the VM** (one container, 8 logical DBs)                                                                              | Neon free (100 projects × 1 GB, 100 CU-h/project/month) is the alternative. **Caveat:** our pollers (outbox sweeper, reconciler) keep Neon compute awake and would use up CU-hours, so self-hosting on the VM is preferred. |
 | Redis           | On the VM                                                                                                                 | **Not Upstash.** Its free tier is 500K commands/month, which BullMQ and presence would exhaust in days.                                                                                                                     |
@@ -1820,8 +1820,8 @@ Script: `scripts/migrate-v1/` (TS). It is **idempotent** (upserts on `legacy_mon
 
 ### Phase 3: Battle + realtime (the core)
 
-- [ ] `domain/match-rules`: challenge and match state machines + winner resolution (earliest-submitted AC; deciding).
-- [ ] battle-service: challenges (create/accept/reject/cancel/expire), start saga + compensation, `match_submissions` read model consumer, winner logic, forfeit, timeout job, reconciler (advisory lock), active match / state / history APIs, participation internal API, tab lease, admission control.
+- [x] `domain/match-rules`: challenge and match state machines + winner resolution (earliest-submitted AC; deciding).
+- [ ] battle-service: challenges (create/accept/reject/cancel/expire), start saga + compensation, `match_submissions` read model consumer, winner logic, forfeit, timeout job, reconciler (advisory lock), active match / state / history APIs, participation internal API, tab lease, admission control. _(Done on `phase-3/battle-core` except the tab lease, which comes with realtime.)_
 - [ ] realtime: ticket auth, local rooms, per-node Kafka consumer delivery, presence (per connection + TTL + debounce + friend fan-out), lobby and query HTTP APIs, rate limits, graceful shutdown.
 - [ ] Web: lobby, challenge modal, battle room (CodeMirror, panels, timer with server offset, drafts in IndexedDB, results panel, opponent activity), end screen, rejoin banner, multi-tab alert.
 
@@ -1971,7 +1971,7 @@ Checked on **2026-11-08**. Re-check these before decisions that depend on them:
 | 0 Foundation                           | ✅ Done        | PR #1 merged 2026-11-10.                             |
 | 1 Identity / User / Gateway / Web auth | ✅ Done        | PRs #2–#4 merged; web on `phase-1/web` (PR #5).      |
 | 2 Problems + Judge                     | 🟡 In progress | PRs #6–#10 merged; judge ops on `phase-2/judge-ops`. |
-| 3 Battle + Realtime                    | ⬜             |                                                      |
+| 3 Battle + Realtime                    | 🟡 In progress | Part A (battle-service) on `phase-3/battle-core`.    |
 | 4 Rating / Leaderboard / Notifications | ⬜             |                                                      |
 | 5 Frontend polish                      | ⬜             |                                                      |
 | 6 Hardening                            | ⬜             |                                                      |
@@ -2037,7 +2037,16 @@ It found three bugs that fake-judge0 couldn't show, all fixed with regression te
 - **Degraded mode (§18.1):** while the BullMQ Redis is down, a leader loop (every 2 s) claims queued submissions with `FOR UPDATE SKIP LOCKED` and syncs running ones directly; the poll-schedule position comes from the time since the stage started, so the 5-minute give-up still holds. Scheduling a poll never waits more than 2 s on Redis, and the sweeper pauses while the loop runs. Leftover jobs are no-ops when Redis returns.
 - 28 judge integration tests (request counting, ladder, drift baseline and factor, degraded mode end to end), plus unit tests for the pure parts.
 
-**Remaining for Phase 2:** nothing blocking. Phase 3 needs the hosting decision (Next.js on the VM vs Vercel) first.
+**Remaining for Phase 2:** nothing blocking.
+
+**Phase 3 progress (part A, branch `phase-3/battle-core`):**
+
+- `packages/domain/match-rules`: challenge and match state machines; `decide()` (earliest-submitted AC wins; an opponent's earlier pending submission → `deciding`; time up → deciding or timeout; deciding cap → winner from what's there, else abort); `results()` (timeout = draw for both). 10 unit tests.
+- `apps/battle-service` (port 4006): challenges (create with presence + both-free + admission checks, list, reject, cancel, expire job + reconciler backstop); accept saga (CAS accept + `user_active_match` for both in one transaction → problem selection → start with server-side `ends_at` + `match-timeout` job; compensation aborts and frees both); judge events → `match_submissions` read model and `evaluate()` under a row lock inside the consumer's inbox transaction; forfeit; reconciler (stuck `created`, lost timeouts, passed deciding caps, overdue challenges) on a Postgres advisory lock; `/matches/active`, `/matches/:id/state`, `/matches/history`; `/internal/matches/:id/participation`. Events carry `recipients` for realtime. 16 integration tests covering the race matrix rows (50 parallel accepts → one match; A→B and B→A; accept after expiry; out-of-order ACs; deciding; timeout vs AC; Kafka redelivery; two stuck starts).
+- judge-service intake checks participation with battle-service (cached briefly): only the match's players, only its problem, only while `in_progress` and before `ends_at`.
+- Gateway routes `/api/v1/challenges` and `/api/v1/matches` (user; battle checks the verified email itself).
+- Verified in dev through the web proxy: challenge → accept → selection → submit (fake-judge0) → completed with the winner in about a second; outsiders get 404.
+- Presence is a stub (everyone online) until realtime exists (part B).
 
 The `battle.match.started.v1` "seen" consumer in problem-service waits for battle-service (Phase 3).
 
@@ -2065,3 +2074,5 @@ Deferred: an identity admin endpoint to change roles (the `identity.user.role_ch
 - 2026-11-11: Admin UI decisions. Admin pages are client-rendered behind the `src/proxy.ts` hint guard and a role check; the gateway and problem-service stay the authority (plan §21 said SSR; nothing on these pages needs SEO or a fast first paint). Statements render with react-markdown + remark-gfm + remark-math + rehype-katex: no raw HTML, `javascript:` links dropped, KaTeX `trust: false`; the same component will render statements for players. Reference code is a plain textarea for now; CodeMirror arrives with the battle room (Phase 3). The publish checklist comes from the server (`publishBlockers` on the admin view) instead of re-implementing the rules in the browser. Both proxies drop the `Expect` header.
 - 2026-11-11: Real Judge0 decisions. `max_processes_and_or_threads` is 60 for every language (Judge0 CE's wrapper forks; fork bombs stay inside isolate). judge-service caches only published judge specs. Calibration adds `1.5 × LANGUAGE_STARTUP_MS[lang]` to limits derived from C++ (measured on hosted Judge0 CE 1.14; re-measure on another instance); a language's own AC reference already includes its startup. Free RapidAPI plan: 50 batch requests/day.
 - 2026-11-12: Judge ops decisions. The budget unit is one Judge0 request that creates submissions (RapidAPI's count); GETs are free. The degradation ladder limits only Runs, never Submits. Drift baseline = the first three successful checks, kept fixed (limits were calibrated on that hardware). Degraded mode runs on the elected leader and claims with SKIP LOCKED, so a BullMQ worker racing on recovery is harmless.
+- 2026-11-12: Hosting decision. Everything runs on one host behind Caddy (Oracle Always Free VM when the account works; until then the dev laptop with a Cloudflare Tunnel for demos). Vercel is dropped: realtime needs a long-lived WebSocket server anyway, and one origin keeps the gateway and services off the internet. ₹0 either way.
+- 2026-11-12: Battle decisions. Timeout without a winner is a draw for both players (`match_participants.result = 'draw'`; rating-service applies the −50 per plan §15). `matches.problem_slug` is stored so the battle page can load the public statement. Judge-event handlers run inside the consumer's inbox transaction, so the verdict they write is visible to the decision in the same transaction.

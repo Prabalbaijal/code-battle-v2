@@ -126,6 +126,20 @@ async function database(name: string): Promise<string> {
   return u.toString();
 }
 
+/** battle-service stand-in: any match is open with PROBLEM_ID, except these two. */
+const OVER_MATCH = newId();
+const OUTSIDER_MATCH = newId();
+const participation = {
+  get: async (matchId: string, userId: string) => ({
+    matchId,
+    userId,
+    participant: matchId !== OUTSIDER_MATCH,
+    status: matchId === OVER_MATCH ? ('completed' as const) : ('in_progress' as const),
+    problemId: PROBLEM_ID,
+    endsAt: new Date(Date.now() + 3_600_000).toISOString(),
+  }),
+};
+
 /** Tests flip these to simulate the BullMQ Redis being down (plan §18.1). */
 const queueDown = { poll: false, callback: false };
 
@@ -171,6 +185,7 @@ async function stack(
   const infra = await createInfra(env, logger, {
     verifier: new JwtVerifier({ jwks: signer.publicJwks() }),
     problems,
+    participation,
     limits: { submit: unlimited(`t-submit-${mode}`), run: unlimited(`t-run-${mode}`) },
     queueHealthy: () => !queueDown[mode],
   });
@@ -476,6 +491,19 @@ describe('intake gates', () => {
     expect((await submit(poll, q, code('program=sum-cases'))).statusCode).toBe(202);
     expect(await status()).toEqual({ level: 'runs_throttled', available: true });
     await set(0);
+  });
+
+  it('in a match only its players submit, only its problem, only while it is in progress', async () => {
+    const outsider = await submit(poll, await player(), code('x'), { matchId: OUTSIDER_MATCH });
+    expect(outsider.statusCode).toBe(404);
+    const over = await submit(poll, await player(), code('x'), { matchId: OVER_MATCH });
+    expect([over.statusCode, over.json().error.code]).toEqual([409, 'MATCH_NOT_ACTIVE']);
+    // a setter gets past the draft check, so the mismatch with the match is what refuses it
+    const wrong = await submit(poll, await player('problem_setter'), code('x'), {
+      matchId: newId(),
+      problemId: DRAFT_ID,
+    });
+    expect(wrong.statusCode).toBe(400);
   });
 
   it('drafts are only for problem setters; unverified users and unknown languages are refused', async () => {

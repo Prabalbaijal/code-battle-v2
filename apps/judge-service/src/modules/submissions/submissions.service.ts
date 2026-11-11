@@ -15,6 +15,7 @@ import { degradationLevel, isAtLeast } from '@cb/judge-core';
 import type { RateLimiter } from '@cb/rate-limit';
 import { addJobToOutbox } from '@cb/queue';
 import { createHash } from 'node:crypto';
+import type { MatchParticipation } from '../../battle/participation.js';
 import type { JudgeRunRow, SubmissionRow } from '../../db/schema.js';
 import type { CodeExecutor } from '../../judge0/executor.js';
 import type { ProblemSource } from '../../problems/problem-source.js';
@@ -31,6 +32,8 @@ export interface SubmissionServiceDeps {
   maxSubmitsPerMatch: number;
   /** One Run per user per minute once the ladder reaches `runs_throttled`. */
   throttledRun: RateLimiter;
+  /** battle-service: who may submit in which match (plan §11.3). */
+  participation: MatchParticipation;
   afterCommit?: () => void;
 }
 
@@ -125,6 +128,7 @@ export class SubmissionService {
     if (!spec || (spec.status !== 'published' && !canSeeDrafts)) throw notFound('Problem');
 
     const matchId = body.matchId ?? null;
+    if (matchId) await this.checkParticipation(matchId, user.userId, body.problemId);
     if (body.mode === 'submit' && matchId) {
       const used = await repo.countMatchSubmits(this.d.db, user.userId, matchId);
       if (used >= this.d.maxSubmitsPerMatch) {
@@ -205,6 +209,25 @@ export class SubmissionService {
     });
     this.d.afterCommit?.();
     return { submissionId: row.id, status: row.status };
+  }
+
+  /**
+   * In a match, only its players may submit, only for its problem, only while it's in progress
+   * and before `ends_at` (server time). battle-service answers; it's down → refuse, don't guess.
+   */
+  private async checkParticipation(matchId: string, userId: string, problemId: string): Promise<void> {
+    let p;
+    try {
+      p = await this.d.participation.get(matchId, userId);
+    } catch {
+      throw new AppError('SERVICE_UNAVAILABLE', 503, 'Match service is unavailable. Try again in a moment.', {
+        expose: true,
+      });
+    }
+    if (!p?.participant) throw notFound('Match');
+    const open = p.status === 'in_progress' && !!p.endsAt && Date.now() < new Date(p.endsAt).getTime();
+    if (!open) throw conflict('MATCH_NOT_ACTIVE', 'This match is over');
+    if (p.problemId !== problemId) throw badRequest("That isn't this match's problem");
   }
 
   /** Identical code on the same problem version was judged before: 0 Judge0 calls. */

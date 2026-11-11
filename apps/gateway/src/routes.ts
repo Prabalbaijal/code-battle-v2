@@ -11,7 +11,7 @@ import type { Env } from './config/env.js';
  */
 export type Access = 'public' | 'optional' | 'user' | 'verified' | Role;
 
-export type ServiceName = 'identity' | 'user' | 'problem' | 'judge';
+export type ServiceName = 'identity' | 'user' | 'problem' | 'judge' | 'battle';
 
 export interface RouteRule {
   prefix: string;
@@ -33,6 +33,9 @@ export const ROUTES: RouteRule[] = [
   { prefix: '/api/v1/submissions', service: 'judge', access: 'user' },
   { prefix: '/api/v1/languages', service: 'judge', access: 'public' },
   { prefix: '/api/v1/judge', service: 'judge', access: 'public' },
+  // battle-service checks a verified email itself where it matters (challenge, accept)
+  { prefix: '/api/v1/challenges', service: 'battle', access: 'user' },
+  { prefix: '/api/v1/matches', service: 'battle', access: 'user' },
   // Judge0 callbacks: no user token; each URL carries an HMAC signature checked by judge-service
   { prefix: '/api/v1/hooks/judge0', service: 'judge', access: 'public' },
 ];
@@ -42,6 +45,7 @@ export const serviceUrls = (env: Env): Record<ServiceName, string> => ({
   user: env.SERVICE_URL_USER,
   problem: env.SERVICE_URL_PROBLEM,
   judge: env.SERVICE_URL_JUDGE,
+  battle: env.SERVICE_URL_BATTLE,
 });
 
 /** Headers only the gateway may set. Anything a client sends with these names is dropped. */

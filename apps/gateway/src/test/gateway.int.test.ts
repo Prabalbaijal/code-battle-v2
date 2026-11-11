@@ -89,6 +89,7 @@ async function gateway(overrides: Record<string, string> = {}): Promise<HttpServ
     SERVICE_URL_USER: urlOf(users),
     SERVICE_URL_PROBLEM: urlOf(users),
     SERVICE_URL_JUDGE: urlOf(users),
+    SERVICE_URL_BATTLE: urlOf(users),
     ...overrides,
   });
   const app = await buildGateway({
@@ -420,7 +421,7 @@ describe('rate limits and failures', () => {
     const ups = await dead.inject({ method: 'GET', url: '/health/upstreams' });
     expect([ups.statusCode, ups.json().checks]).toEqual([
       503,
-      { identity: 'ok', user: 'down', problem: 'ok', judge: 'ok' },
+      { identity: 'ok', user: 'down', problem: 'ok', judge: 'ok', battle: 'ok' },
     ]);
     expect((await gw.inject({ method: 'GET', url: '/health/upstreams' })).statusCode).toBe(200);
   });
