@@ -29,6 +29,12 @@ jobs:
       - run: pnpm lint
       - run: pnpm check-types
       - run: pnpm test
+      # plan §21.4: First Load JS per route, measured from the real HTML of a production build
+      - name: Web bundle budgets
+        run: |
+          pnpm --filter @cb/web start > /tmp/web.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf -o /dev/null http://localhost:3000/login && break; sleep 1; done
+          pnpm --filter @cb/web budgets
 
   integration:
     name: Integration tests (Testcontainers)

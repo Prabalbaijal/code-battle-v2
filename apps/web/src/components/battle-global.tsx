@@ -6,7 +6,7 @@ import { Button, UserAvatar } from '@cb/ui';
 import { Loader2, Swords, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { api, isApiError, messageFor } from '@/lib/api';
 import {
@@ -20,49 +20,8 @@ import {
 import { describe as describeNotification, notificationKeys } from '@/lib/notifications';
 import { ratingKeys } from '@/lib/rating';
 import { realtime, useRealtimeEvent, useRealtimeStatus } from '@/lib/realtime';
+import { notify, Notices } from './notices';
 import { useMe } from '@/lib/session';
-
-// ---------------- notices (small, transient) ----------------
-
-interface Notice {
-  id: number;
-  text: string;
-}
-let notices: Notice[] = [];
-const noticeListeners = new Set<() => void>();
-let nextNotice = 1;
-export function notify(text: string) {
-  const id = nextNotice++;
-  notices = [...notices, { id, text }];
-  noticeListeners.forEach((f) => f());
-  setTimeout(() => {
-    notices = notices.filter((n) => n.id !== id);
-    noticeListeners.forEach((f) => f());
-  }, 5000);
-}
-function Notices() {
-  const list = useSyncExternalStore(
-    (f) => {
-      noticeListeners.add(f);
-      return () => noticeListeners.delete(f);
-    },
-    () => notices,
-    () => [],
-  );
-  return (
-    <div
-      className="pointer-events-none fixed bottom-4 right-4 z-50 grid gap-2"
-      role="status"
-      aria-live="polite"
-    >
-      {list.map((n) => (
-        <div key={n.id} className="rounded-lg border border-border bg-card px-4 py-3 text-sm shadow-lg">
-          {n.text}
-        </div>
-      ))}
-    </div>
-  );
-}
 
 // ---------------- socket → app state ----------------
 

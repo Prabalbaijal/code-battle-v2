@@ -1,16 +1,16 @@
 'use client';
 
-import type { HistoryItem, PlayerStats } from '@cb/contracts';
+import type { HistoryItem, PlayerStats, ProfilePageView } from '@cb/contracts';
 import { Alert, Badge, Button, Card, cn, Skeleton, UserAvatar } from '@cb/ui';
 import { CalendarDays, Coins, Flame, Swords, UserX } from 'lucide-react';
 import Link from 'next/link';
-import { CoinChart } from '@/components/coin-chart';
+import { LazyCoinChart as CoinChart } from '@/components/lazy-coin-chart';
 import { EmptyState, RelationshipActions } from '@/components/people';
 import { isApiError, messageFor } from '@/lib/api';
 import { signed, useCoinHistory, useHistory, useProfilePage } from '@/lib/rating';
 
-export function ProfileView({ username }: { username: string }) {
-  const page = useProfilePage(username);
+export function ProfileView({ username, initial }: { username: string; initial?: ProfilePageView | null }) {
+  const page = useProfilePage(username, initial);
 
   if (page.isPending) {
     return (
@@ -66,7 +66,12 @@ export function ProfileView({ username }: { username: string }) {
         <>
           <Card className="grid gap-3 p-6">
             <h2 className="font-semibold">Coins over time</h2>
-            <MyCoinChart />
+            {stats && stats.wins + stats.losses + stats.draws === 0 ? (
+              // known from the server render: no need to wait for the ledger to say so
+              <p className="text-sm text-muted-foreground">Play a match to start your coin history.</p>
+            ) : (
+              <MyCoinChart />
+            )}
           </Card>
           <Card className="grid gap-3 p-6">
             <h2 className="font-semibold">Match history</h2>

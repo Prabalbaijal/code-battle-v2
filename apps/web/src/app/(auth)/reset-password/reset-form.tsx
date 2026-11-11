@@ -4,7 +4,7 @@ import { Alert, Button, Field, Input } from '@cb/ui';
 import { CheckCircle2 } from 'lucide-react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { useForm } from 'react-hook-form';
+import { useLiteForm as useForm } from '@/lib/lite-form';
 import { AuthCard, FormError } from '@/components/auth-card';
 import { rules, setApiErrors, SERVER } from '@/lib/form';
 import { useResetPassword } from '@/lib/session';

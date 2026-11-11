@@ -1,8 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
-import { BattleGlobal } from '@/components/battle-global';
+import { LazyBattleGlobal, LazyVerifyBanner } from '@/components/lazy';
 import { SiteHeader } from '@/components/site-header';
-import { VerifyBanner } from '@/components/verify-banner';
 import './globals.css';
 import { Providers } from './providers';
 
@@ -28,8 +27,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             Skip to content
           </a>
           <SiteHeader />
-          <VerifyBanner />
-          <BattleGlobal />
+          <LazyVerifyBanner />
+          <LazyBattleGlobal />
           <main id="main" className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6">
             {children}
           </main>

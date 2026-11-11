@@ -8,9 +8,9 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Group, Panel, Separator } from 'react-resizable-panels';
-import { notify } from '@/components/battle-global';
-import { TEMPLATES } from '@/components/code-editor';
-import { Markdown } from '@/components/markdown';
+import { notify } from '@/components/notices';
+import { TEMPLATES } from '@/components/templates';
+import { LazyMarkdown as Markdown } from '@/components/lazy-markdown';
 import { isApiError, messageFor } from '@/lib/api';
 import { tabLease, useForfeit, useMatchState, useProblem, useSubmission, useSubmit } from '@/lib/battle';
 import { signed, useMatchCoins } from '@/lib/rating';
@@ -236,9 +236,28 @@ export function BattleRoom({ matchId }: { matchId: string }) {
   );
 }
 
+/**
+ * A modal over the room (intro, end screen). Everything behind it is made `inert` while it's up:
+ * no focus or clicks reach the dimmed page, and assistive tech (and axe) only see the dialog.
+ */
 function Overlay({ children }: { children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const self = ref.current;
+    const behind = [
+      document.querySelector<HTMLElement>('header'),
+      ...[...(self?.parentElement?.children ?? [])].filter((el): el is HTMLElement => el !== self),
+    ].filter((el): el is HTMLElement => !!el && !el.inert);
+    for (const el of behind) el.inert = true;
+    return () => {
+      for (const el of behind) el.inert = false;
+    };
+  }, []);
   return (
-    <div className="absolute inset-0 z-40 grid place-items-center bg-background/80 p-4 backdrop-blur-sm">
+    <div
+      ref={ref}
+      className="absolute inset-0 z-40 grid place-items-center bg-background/80 p-4 backdrop-blur-sm"
+    >
       <div
         role="dialog"
         aria-modal="true"

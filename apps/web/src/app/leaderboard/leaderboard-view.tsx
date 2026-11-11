@@ -15,7 +15,7 @@ import {
 } from '@cb/ui';
 import { Coins, Trophy, Users } from 'lucide-react';
 import Link from 'next/link';
-import { useState } from 'react';
+import { startTransition, useState } from 'react';
 import { EmptyState } from '@/components/people';
 import { messageFor } from '@/lib/api';
 import { useLeaderboard, usePresence } from '@/lib/rating';
@@ -32,7 +32,11 @@ export function LeaderboardView() {
         <p className="text-sm text-muted-foreground">Ranked by coins. Ties go to whoever got there first.</p>
       </div>
       {me ? (
-        <Tabs value={scope} onValueChange={(v) => setScope(v as 'global' | 'friends')} className="grid gap-4">
+        <Tabs
+          value={scope}
+          onValueChange={(v) => startTransition(() => setScope(v as 'global' | 'friends'))}
+          className="grid gap-4"
+        >
           <TabsList aria-label="Leaderboard scope">
             <TabsTrigger value="global">Everyone</TabsTrigger>
             <TabsTrigger value="friends">Friends</TabsTrigger>
