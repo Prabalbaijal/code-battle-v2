@@ -29,8 +29,10 @@ export const ROUTES: RouteRule[] = [
   { prefix: '/api/v1/friends', service: 'user', access: 'user' },
   { prefix: '/api/v1/problems', service: 'problem', access: 'optional' },
   { prefix: '/api/v1/admin/problems', service: 'problem', access: 'problem_setter' },
+  { prefix: '/api/v1/admin/judge', service: 'judge', access: 'admin' },
   { prefix: '/api/v1/submissions', service: 'judge', access: 'user' },
   { prefix: '/api/v1/languages', service: 'judge', access: 'public' },
+  { prefix: '/api/v1/judge', service: 'judge', access: 'public' },
   // Judge0 callbacks: no user token; each URL carries an HMAC signature checked by judge-service
   { prefix: '/api/v1/hooks/judge0', service: 'judge', access: 'public' },
 ];

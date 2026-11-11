@@ -8,6 +8,7 @@ import {
   J0,
   judgeFile,
   requestLimits,
+  requestsFor,
   type FileOutcome,
   type InstanceLimits,
   type RequestLimits,
@@ -38,6 +39,10 @@ export interface JudgingDeps {
   callbackBaseUrl?: string;
   callbackSecret?: string;
   dailyBudget: number;
+  /** Plan §14.8: multiplies every CPU limit (1 unless the hosted judge drifted). */
+  driftFactor?: () => number;
+  /** False while the BullMQ Redis is unreachable: polls are then driven by the degraded loop. */
+  queueHealthy?: () => boolean;
   afterCommit?: () => void;
 }
 
@@ -84,6 +89,31 @@ function latestRuns(runs: JudgeRunRow[]): Map<number, JudgeRunRow> {
  *   Submit: stage 1 = sample + small, stage 2 = large (only if stage 1 is all AC).
  *   Run:    stage 1 = sample (+ custom input as file 0, which has no verdict of its own).
  */
+/** Where `elapsedMs` after a stage started falls in the poll schedule (delays.length = give up). */
+export function pollIndex(elapsedMs: number, delays: readonly number[]): number {
+  let total = 0;
+  for (let i = 0; i < delays.length; i++) {
+    total += delays[i]!;
+    if (elapsedMs < total) return i;
+  }
+  return delays.length;
+}
+
+const withTimeout = <T>(p: Promise<T>, ms: number): Promise<T> =>
+  new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`timed out after ${ms} ms`)), ms);
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e: unknown) => {
+        clearTimeout(t);
+        reject(e instanceof Error ? e : new Error(String(e)));
+      },
+    );
+  });
+
 export class JudgingService {
   private profiles = new Map<string, LanguageProfileRow>();
   private instance: InstanceLimits = {
@@ -103,6 +133,10 @@ export class JudgingService {
     this.maxBatch = Math.max(1, maxBatch);
   }
 
+  get instanceLimits(): InstanceLimits {
+    return this.instance;
+  }
+
   async loadProfiles(): Promise<void> {
     this.profiles = new Map((await repo.profiles(this.d.db)).map((p) => [p.languageKey, p]));
   }
@@ -112,7 +146,29 @@ export class JudgingService {
   /** judge-submit job. Idempotent: only the first call moves the submission out of `queued`. */
   async start(submissionId: string): Promise<void> {
     const sub = await withTransaction(this.d.db, (tx) => repo.claim(tx, submissionId));
-    if (!sub) return;
+    if (sub) await this.begin(sub);
+  }
+
+  /** Degraded mode: claim and start the oldest queued submission. Returns false when none is waiting. */
+  async startNextQueued(olderThanSec = 2): Promise<boolean> {
+    const sub = await withTransaction(this.d.db, (tx) => repo.claimNextQueued(tx, olderThanSec));
+    if (!sub) return false;
+    await this.begin(sub);
+    return true;
+  }
+
+  /**
+   * Degraded mode: one sync without a poll job. The position in the poll schedule comes from the
+   * time since the current stage started, so "give up after ~5 min" still holds.
+   */
+  async syncWithoutQueue(submissionId: string): Promise<void> {
+    const runs = await repo.runs(this.d.db, submissionId);
+    if (!runs.length) return; // just claimed elsewhere; its runs are being created
+    const stageStart = Math.max(0, ...runs.map((r) => r.createdAt.getTime()));
+    await this.sync(submissionId, pollIndex(Date.now() - stageStart, POLL_DELAYS_MS[this.d.mode]));
+  }
+
+  private async begin(sub: SubmissionRow): Promise<void> {
     const spec = await this.d.problems.spec(sub.problemId);
     if (!spec || !spec.files.length) return this.fail(sub.id, 'Problem is unavailable');
     if (spec.version !== sub.problemVersion) {
@@ -178,11 +234,18 @@ export class JudgingService {
       await this.aggregate(submissionId);
       return;
     }
+    // Redis down: the degraded loop polls instead (plan §18.1); don't wait on a dead connection.
+    if (this.d.queueHealthy?.() === false) return;
     // the job id includes the run count, so a new stage restarts the schedule without colliding
-    await this.d.pollQueue.add(
-      'sync',
-      { submissionId, n: n + 1 },
-      { jobId: `poll-${submissionId}-${runs.length}-${n + 1}`, delay: delays[n]! },
+    await withTimeout(
+      this.d.pollQueue.add(
+        'sync',
+        { submissionId, n: n + 1 },
+        { jobId: `poll-${submissionId}-${runs.length}-${n + 1}`, delay: delays[n]! },
+      ),
+      2000,
+    ).catch((err: unknown) =>
+      this.d.logger.warn({ err, submissionId }, 'could not schedule the next poll; the sweeper will'),
     );
   }
 
@@ -231,7 +294,12 @@ export class JudgingService {
     const p = this.profiles.get(lang);
     const factor = Number(p?.defaultTimeFactor ?? 1);
     return requestLimits({
-      cpuLimitMs: overrideMs ?? file.cpuLimitMs[lang as LanguageKey] ?? Math.round(DEFAULT_CPU_MS * factor),
+      // calibration measures with its own limit; everything else follows the drift factor
+      cpuLimitMs:
+        overrideMs ??
+        Math.round(
+          (file.cpuLimitMs[lang as LanguageKey] ?? DEFAULT_CPU_MS * factor) * (this.d.driftFactor?.() ?? 1),
+        ),
       memoryLimitKb: spec.memoryLimitKb,
       outputLimitKb: spec.outputLimitKb,
       lang: { memOverheadKb: p?.memOverheadKb ?? 0, maxProcesses: p?.maxProcesses ?? JUDGE0_PROCESSES },
@@ -277,8 +345,9 @@ export class JudgingService {
       }),
     );
 
-    // Intake kept headroom for whole submissions, so continuing one may overdraw slightly.
-    await repo.reserveCalls(this.d.db, pending.length, this.d.dailyBudget, true);
+    // Counted like RapidAPI does: one per batch request. Intake kept headroom for whole
+    // submissions, so continuing one may overdraw slightly.
+    await repo.reserveCalls(this.d.db, requestsFor(pending.length, this.maxBatch), this.d.dailyBudget, true);
     for (let i = 0; i < pending.length; i += this.maxBatch) {
       const chunk = pending.slice(i, i + this.maxBatch);
       const tokens = await this.d.executor.submitBatch(reqs.slice(i, i + this.maxBatch));

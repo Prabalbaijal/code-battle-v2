@@ -4,6 +4,7 @@ import {
   calibrationResultSchema,
   capacitySchema,
   createSubmissionBodySchema,
+  judgeStatusSchema,
   languageInfoSchema,
   submissionSchema,
 } from '@cb/contracts';
@@ -84,6 +85,11 @@ export function registerSubmissionRoutes(app: HttpServer, d: SubmissionRouteDeps
       preHandler: [auth.authenticate],
     },
     async (req) => ({ items: await s.list(authUser(req), req.query) }),
+  );
+
+  // public: lets the web show a "judge is busy" banner (plan §14.6.6)
+  app.get('/api/v1/judge/status', { schema: { response: { 200: judgeStatusSchema } } }, async () =>
+    s.status(),
   );
 
   app.get(

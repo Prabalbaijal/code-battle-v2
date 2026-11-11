@@ -17,6 +17,7 @@ import { CalibrationService } from './modules/calibrations/calibrations.service.
 import { JudgingService } from './modules/judging/judging.service.js';
 import { SubmissionService } from './modules/submissions/submissions.service.js';
 import { ProblemServiceSource, type ProblemSource } from './problems/problem-source.js';
+import { DriftService } from './modules/drift/drift.service.js';
 import { QUEUES } from './queues.js';
 
 export const SERVICE_TOPICS = [TOPICS.judge];
@@ -41,6 +42,9 @@ export interface Infra {
   judging: JudgingService;
   submissions: SubmissionService;
   calibrations: CalibrationService;
+  drift: DriftService;
+  /** Is the BullMQ Redis reachable? When not, workers judge from Postgres (plan §18.1). */
+  queueHealthy: () => boolean;
   /** Read Judge0's limits and languages; upsert language profiles. Retries are the caller's job. */
   bootstrapJudge0(): Promise<void>;
   close(): Promise<void>;
@@ -51,7 +55,9 @@ export interface InfraOptions {
   problems?: ProblemSource;
   executor?: CodeExecutor;
   /** Tests replace the per-user submit/run limits. */
-  limits?: { submit: RateLimiter; run: RateLimiter };
+  limits?: { submit: RateLimiter; run: RateLimiter; throttledRun?: RateLimiter };
+  /** Tests force degraded mode. */
+  queueHealthy?: () => boolean;
 }
 
 export async function createInfra(env: Env, logger: Logger, opts: InfraOptions = {}): Promise<Infra> {
@@ -84,6 +90,7 @@ export async function createInfra(env: Env, logger: Logger, opts: InfraOptions =
       attempts: 3,
       backoff: { type: 'exponential', delay: 2000 },
     }),
+    [QUEUES.drift]: createQueue(QUEUES.drift, queueRedis, { attempts: 1 }),
   };
   const outbox = createOutboxWriter(env.SERVICE_NAME);
   const relay = new OutboxRelay({ db: db.db, producer, logger });
@@ -128,7 +135,8 @@ export async function createInfra(env: Env, logger: Logger, opts: InfraOptions =
     }),
   };
 
-  const judging = new JudgingService({
+  const queueHealthy = opts.queueHealthy ?? (() => queueRedis.status === 'ready');
+  const judging: JudgingService = new JudgingService({
     db: db.db,
     executor,
     problems,
@@ -139,7 +147,17 @@ export async function createInfra(env: Env, logger: Logger, opts: InfraOptions =
     ...(env.JUDGE0_CALLBACK_BASE_URL ? { callbackBaseUrl: env.JUDGE0_CALLBACK_BASE_URL } : {}),
     ...(env.JUDGE0_CALLBACK_SECRET ? { callbackSecret: env.JUDGE0_CALLBACK_SECRET } : {}),
     dailyBudget: env.JUDGE0_DAILY_BUDGET,
+    driftFactor: () => drift.factor(),
+    queueHealthy,
     afterCommit,
+  });
+  const drift: DriftService = new DriftService({
+    db: db.db,
+    executor,
+    logger,
+    instance: () => judging.instanceLimits,
+    dailyBudget: env.JUDGE0_DAILY_BUDGET,
+    matchReserveCalls: env.MATCH_RESERVE_CALLS,
   });
   const submissions = new SubmissionService({
     db: db.db,
@@ -149,6 +167,15 @@ export async function createInfra(env: Env, logger: Logger, opts: InfraOptions =
     dailyBudget: env.JUDGE0_DAILY_BUDGET,
     matchReserveCalls: env.MATCH_RESERVE_CALLS,
     maxSubmitsPerMatch: env.MAX_SUBMITS_PER_MATCH,
+    throttledRun:
+      opts.limits?.throttledRun ??
+      new RateLimiter({
+        redis: safeRedis,
+        logger,
+        prefix: 'judge:run-low',
+        capacity: 1,
+        refillPerSec: 1 / 60,
+      }),
     afterCommit,
   });
 
@@ -181,6 +208,8 @@ export async function createInfra(env: Env, logger: Logger, opts: InfraOptions =
     judging,
     submissions,
     calibrations,
+    drift,
+    queueHealthy,
     async bootstrapJudge0() {
       const info = await executor.info();
       const resolved = resolveLanguages(info.languages);
@@ -197,6 +226,7 @@ export async function createInfra(env: Env, logger: Logger, opts: InfraOptions =
       );
       judging.configure(info.instance, info.maxBatch);
       await judging.loadProfiles();
+      await drift.load();
       const missing = Object.keys(LANGUAGE_RULES).filter((k) => !resolved.some((r) => r.key === k));
       logger.info(
         { languages: resolved.map((r) => `${r.key}=${r.judge0Id}`), missing, instance: info.instance },

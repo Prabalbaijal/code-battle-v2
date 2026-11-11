@@ -16,7 +16,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../app.js';
 import { readEnv } from '../config/env.js';
 import { migrate } from '../db/migrate.js';
-import { judgeBudgetDaily, judgeRuns } from '../db/schema.js';
+import { judgeBudgetDaily, judgeDriftChecks, judgeRuns } from '../db/schema.js';
 import { createInfra, type Infra } from '../infra.js';
 import type { ProblemSource } from '../problems/problem-source.js';
 import { startWorker, type WorkerHandle } from '../worker-runtime.js';
@@ -126,6 +126,9 @@ async function database(name: string): Promise<string> {
   return u.toString();
 }
 
+/** Tests flip these to simulate the BullMQ Redis being down (plan §18.1). */
+const queueDown = { poll: false, callback: false };
+
 interface Stack {
   infra: Infra;
   app: HttpServer;
@@ -169,6 +172,7 @@ async function stack(
     verifier: new JwtVerifier({ jwks: signer.publicJwks() }),
     problems,
     limits: { submit: unlimited(`t-submit-${mode}`), run: unlimited(`t-run-${mode}`) },
+    queueHealthy: () => !queueDown[mode],
   });
   const worker = await startWorker(infra);
   const app = await buildApp(infra);
@@ -199,7 +203,7 @@ afterAll(async () => {
 
 // ---------------- helpers ----------------
 
-const player = async (role: 'user' | 'problem_setter' = 'user', ev = true) =>
+const player = async (role: 'user' | 'problem_setter' | 'admin' = 'user', ev = true) =>
   (await signer.signAccess({ userId: newId(), role, emailVerified: ev }, 900)).token;
 
 async function submit(
@@ -249,6 +253,20 @@ const runsOf = (s: Stack, id: string) =>
   s.infra.db.db.select().from(judgeRuns).where(eq(judgeRuns.submissionId, id));
 let uniq = 0;
 /** Fake directives in a Python comment; a unique suffix keeps the verdict cache out of the way. */
+const usedToday = async (s: Stack) => (await s.infra.submissions.capacity()).used;
+
+/** Wait until earlier tests' submissions are done, so budget deltas belong to this test only. */
+const quiet = (s: Stack) =>
+  waitFor(
+    async () => {
+      const { rows } = await s.infra.db.pool.query<{ n: number }>(
+        "select count(*)::int as n from submissions where status in ('queued','running')",
+      );
+      return rows[0]!.n === 0 ? true : undefined;
+    },
+    { what: 'idle judge', timeoutMs: 60_000 },
+  );
+
 const code = (directives: string) => `# @fake ${directives}\nprint("solution ${++uniq}")\n`;
 
 // ---------------- tests ----------------
@@ -404,7 +422,7 @@ describe('intake gates', () => {
         .update(judgeBudgetDaily)
         .set({ callsUsed: used })
         .where(sql`${judgeBudgetDaily.day} = ${day}`);
-    await set(500 - 41); // 41 left: practice submit (3 files) would leave 38 < reserve 40
+    await set(500 - 41); // 41 left: a practice submit (2 batch requests) would leave 39 < reserve 40
     const practice = await submit(poll, await player(), code('program=sum-cases'));
     expect([practice.statusCode, practice.json().error.code]).toEqual([503, 'JUDGE_AT_CAPACITY']);
     const inMatch = await submit(poll, await player(), code('program=sum-cases'), { matchId: newId() });
@@ -417,7 +435,46 @@ describe('intake gates', () => {
       url: '/internal/capacity',
       headers: { authorization: `Bearer ${await signInternalToken(SECRET, 'battle-service')}` },
     });
-    expect(capacity.json()).toMatchObject({ remaining: 0, limit: 500, breaker: 'closed' });
+    expect(capacity.json()).toMatchObject({
+      remaining: 0,
+      limit: 500,
+      breaker: 'closed',
+      level: 'no_new_matches',
+    });
+    await set(0);
+  });
+
+  it('counts Judge0 requests like RapidAPI: a 3-file submit is two batches, not three calls', async () => {
+    await quiet(poll);
+    const before = await usedToday(poll);
+    const v = await judge(poll, code('program=sum-cases'));
+    expect(v.verdict).toBe('AC');
+    expect((await usedToday(poll)) - before).toBe(2); // sample + small, then large
+  });
+
+  it('degradation ladder: custom input pauses below 30%, Runs throttle below 15%, Submits go on', async () => {
+    const day = sql`(now() at time zone 'utc')::date`;
+    const set = (used: number) =>
+      poll.infra.db.db
+        .update(judgeBudgetDaily)
+        .set({ callsUsed: used })
+        .where(sql`${judgeBudgetDaily.day} = ${day}`);
+    const status = async () => (await poll.app.inject({ method: 'GET', url: '/api/v1/judge/status' })).json();
+
+    await set(500 - 140); // 28% left
+    const p = await player();
+    const custom = await submit(poll, p, code('program=echo'), { mode: 'run', customInput: '1\n1 2\n' });
+    expect([custom.statusCode, custom.json().error.code]).toEqual([503, 'JUDGE_AT_CAPACITY']);
+    expect((await submit(poll, p, code('program=sum-cases'), { mode: 'run' })).statusCode).toBe(202);
+    expect(await status()).toEqual({ level: 'no_custom_input', available: true });
+
+    await set(500 - 70); // 14% left
+    const q = await player();
+    expect((await submit(poll, q, code('program=sum-cases'), { mode: 'run' })).statusCode).toBe(202);
+    const again = await submit(poll, q, code('program=sum-cases'), { mode: 'run' });
+    expect([again.statusCode, again.json().error.code]).toEqual([429, 'RATE_LIMITED']);
+    expect((await submit(poll, q, code('program=sum-cases'))).statusCode).toBe(202);
+    expect(await status()).toEqual({ level: 'runs_throttled', available: true });
     await set(0);
   });
 
@@ -512,5 +569,77 @@ describe('calibration runs (internal)', () => {
     expect(b.id).toBe(a.id);
     await until(a.id);
     expect(await poll.infra.db.db.select().from(outbox).where(eq(outbox.key, a.id))).toHaveLength(0);
+  });
+});
+
+describe('drift (plan §14.8)', () => {
+  it('three checks build the baseline, each one batch request; admins see it, players do not', async () => {
+    await quiet(poll);
+    const before = await usedToday(poll);
+    for (let i = 0; i < 3; i++) expect((await poll.infra.drift.check()).error).toBeNull();
+    expect((await usedToday(poll)) - before).toBe(3);
+
+    const view = await poll.app.inject({
+      method: 'GET',
+      url: '/api/v1/admin/judge',
+      headers: { authorization: `Bearer ${await player('admin')}` },
+    });
+    expect(view.json()).toMatchObject({
+      capacity: { level: 'normal' },
+      drift: { factor: 1, checks: 3, baseline: { cpp: 10, python: 10 }, lastCheck: { error: null } },
+    });
+    const denied = await poll.app.inject({
+      method: 'GET',
+      url: '/api/v1/admin/judge',
+      headers: { authorization: `Bearer ${await player()}` },
+    });
+    expect(denied.statusCode).toBe(403);
+  });
+
+  it('a drift factor scales every CPU limit (1.5 s passes a 1 s limit at factor 2)', async () => {
+    const setFactor = async (factor: string) => {
+      await poll.infra.db.db
+        .insert(judgeDriftChecks)
+        .values({ id: newId(), samples: { cpp: 10, python: 10 }, ratio: factor, factor });
+      await poll.infra.drift.load();
+    };
+    await setFactor('2.00');
+    try {
+      expect((await judge(poll, code('program=sum-cases time=1.5'))).verdict).toBe('AC');
+    } finally {
+      await setFactor('1.00');
+    }
+    expect((await judge(poll, code('program=sum-cases time=1.5'))).verdict).toBe('TLE');
+  });
+});
+
+describe('degraded mode (plan §18.1)', () => {
+  it('with the queue down, Postgres drives judging end to end; leftover jobs are no-ops afterwards', async () => {
+    await quiet(poll);
+    await poll.worker.submitWorker.pause();
+    await poll.worker.pollWorker.pause();
+    queueDown.poll = true;
+    // the leader loop does this every 2 s in production; here we drive it directly
+    const ticker = setInterval(() => void poll.worker.degradedTick(), 300);
+    let id: string;
+    try {
+      const v = await judge(poll, code('program=sum-cases'));
+      expect(v).toMatchObject({ verdict: 'AC', failedFile: null });
+      id = v.id;
+    } finally {
+      clearInterval(ticker);
+      queueDown.poll = false;
+      poll.worker.submitWorker.resume();
+      poll.worker.pollWorker.resume();
+    }
+    expect((await runsOf(poll, id)).map((r) => [r.stage, r.fileOrdinal]).sort()).toEqual([
+      [1, 1],
+      [1, 2],
+      [2, 3],
+    ]);
+    // the judge-submit job queued meanwhile now runs: it must not judge the submission again
+    await quiet(poll);
+    await new Promise((r) => setTimeout(r, 1500));
+    expect(await runsOf(poll, id)).toHaveLength(3);
   });
 });

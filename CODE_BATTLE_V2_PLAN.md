@@ -1773,14 +1773,14 @@ Script: `scripts/migrate-v1/` (TS). It is **idempotent** (upserts on `legacy_mon
 
 ### Phase 0: Foundation (≈1 week)
 
-- [ ] Create the monorepo at the repo root: `pnpm-workspace.yaml`, `turbo.json` (tasks: build, dev, worker, lint, check-types, test, test:int), `tsconfig.base.json`, `packages/config/*` (tsconfig, eslint flat config with `boundaries`, prettier, tailwind).
-- [ ] `packages/contracts` skeleton: envelope, error codes, socket maps.
-- [ ] `libs`: logger, errors, env, ids, http-server (health, error mapper, graceful shutdown, OTel), db (drizzle factory, tx helper, advisory lock), redis (role options, breaker), events (outbox relay, consumer with inbox + DLQ), queue (BullMQ factory, job-outbox dispatcher), idempotency, rate-limit, http-client, testing.
-- [ ] `infra/docker-compose.yml`: postgres (+ `init.sql` creating 8 DBs and roles), redis (noeviction), redpanda + console, otel-collector, fake-judge0.
-- [ ] `apps/fake-judge0` (Fastify): `/config_info`, `/languages`, `POST /submissions/batch`, `GET /submissions/batch`, callbacks, scripted verdicts.
-- [ ] One "hello" service using every lib, as a template (`scripts/new-service.ts` copies it).
-- [ ] GitHub Actions CI (lint, typecheck, unit, integration with Testcontainers).
-- [ ] `docs/adr/` with ADR-001 … ADR-012 (§26).
+- [x] Create the monorepo at the repo root: `pnpm-workspace.yaml`, `turbo.json` (tasks: build, dev, worker, lint, check-types, test, test:int), `tsconfig.base.json`, `packages/config/*` (tsconfig, eslint flat config with `boundaries`, prettier, tailwind).
+- [x] `packages/contracts` skeleton: envelope, error codes, socket maps.
+- [x] `libs`: logger, errors, env, ids, http-server (health, error mapper, graceful shutdown, OTel), db (drizzle factory, tx helper, advisory lock), redis (role options, breaker), events (outbox relay, consumer with inbox + DLQ), queue (BullMQ factory, job-outbox dispatcher), idempotency, rate-limit, http-client, testing.
+- [x] `infra/docker-compose.yml`: postgres (+ `init.sql` creating 8 DBs and roles), redis (noeviction), redpanda + console, otel-collector, fake-judge0.
+- [x] `apps/fake-judge0` (Fastify): `/config_info`, `/languages`, `POST /submissions/batch`, `GET /submissions/batch`, callbacks, scripted verdicts.
+- [x] One "hello" service using every lib, as a template (`scripts/new-service.ts` copies it).
+- [x] GitHub Actions CI (lint, typecheck, unit, integration with Testcontainers).
+- [x] `docs/adr/` with ADR-001 … ADR-012 (§26).
 
 **DoD:**
 
@@ -1792,11 +1792,11 @@ Script: `scripts/migrate-v1/` (TS). It is **idempotent** (upserts on `legacy_mon
 
 ### Phase 1: Identity, user, gateway + web auth (frontend track A starts)
 
-- [ ] identity-service: schema, register, verify, login, refresh rotation with reuse detection, logout(-all), forgot/reset, JWKS, socket ticket, Argon2id + bcrypt rehash, lockout, events, email job outbox.
-- [ ] notification-service (email part): `email-send` worker, provider adapters, `email_log` dedupe.
-- [ ] user-service: profiles from events, search (trigram/prefix), friends (canonical pairs), signed avatar upload, events.
-- [ ] gateway: JWKS verification, RBAC table, rate limits, proxy routes, CSRF/Origin checks, OpenAPI aggregation at `/docs`.
-- [ ] `apps/web`: Next.js skeleton, `packages/ui` (shadcn base, tokens, Storybook), auth pages, `middleware.ts`, rewrites, TanStack Query setup, friends and search pages.
+- [x] identity-service: schema, register, verify, login, refresh rotation with reuse detection, logout(-all), forgot/reset, JWKS, socket ticket, Argon2id + bcrypt rehash, lockout, events, email job outbox.
+- [x] notification-service (email part): `email-send` worker, provider adapters, `email_log` dedupe.
+- [x] user-service: profiles from events, search (trigram/prefix), friends (canonical pairs), signed avatar upload, events.
+- [x] gateway: JWKS verification, RBAC table, rate limits, proxy routes, CSRF/Origin checks, OpenAPI aggregation at `/docs`.
+- [x] `apps/web`: Next.js skeleton, `packages/ui` (shadcn base, tokens, Storybook), auth pages, `middleware.ts`, rewrites, TanStack Query setup, friends and search pages. _(Done with Next 16 `proxy.ts`, a route-handler proxy and own components instead of shadcn/Radix; Storybook moved to Phase 5. See the decision log.)_
 
 **DoD:**
 
@@ -1806,9 +1806,9 @@ Script: `scripts/migrate-v1/` (TS). It is **idempotent** (upserts on `legacy_mon
 
 ### Phase 2: Problems + judge (hosted Judge0)
 
-- [ ] problem-service: schema, admin CRUD, test file upload to R2 (with size rules), reference solutions, `problem-calibrate`, publish rules, judge-spec internal API, selection API (idempotent), seen consumer.
-- [ ] judge-service: `language_profiles` bootstrap from `/languages`, `/config_info` validation, submission intake (gates, cache, idempotency), `judge-submit`/`judge-run`/`judge-poll`, callback endpoint (HMAC), staged batching, classification + checkers (`domain/judge-core`), near-miss rerun, IE retry, budget counter, circuit breaker, capacity endpoint, drift job, events.
-- [ ] Postgres-polling degraded mode for the judge worker (§18.1).
+- [x] problem-service: schema, admin CRUD, test file upload to R2 (with size rules), reference solutions, `problem-calibrate`, publish rules, judge-spec internal API, selection API (idempotent), seen consumer. _(Blobs live in Postgres, not R2; the `battle.match.started.v1` "seen" consumer comes with battle-service in Phase 3.)_
+- [x] judge-service: `language_profiles` bootstrap from `/languages`, `/config_info` validation, submission intake (gates, cache, idempotency), `judge-submit`/`judge-run`/`judge-poll`, callback endpoint (HMAC), staged batching, classification + checkers (`domain/judge-core`), near-miss rerun, IE retry, budget counter, circuit breaker, capacity endpoint, drift job, events.
+- [x] Postgres-polling degraded mode for the judge worker (§18.1).
 - [x] Web: admin problem authoring UI (statement editor with markdown preview, test files, reference solutions, calibration report, publish).
 
 **DoD:**
@@ -1966,17 +1966,17 @@ Checked on **2026-11-08**. Re-check these before decisions that depend on them:
 
 ## 29. Progress tracker (update as you go)
 
-| Phase                                  | Status         | Notes / links                                          |
-| -------------------------------------- | -------------- | ------------------------------------------------------ |
-| 0 Foundation                           | ✅ Done        | PR #1 merged 2026-11-10.                               |
-| 1 Identity / User / Gateway / Web auth | ✅ Done        | PRs #2–#4 merged; web on `phase-1/web` (PR #5).        |
-| 2 Problems + Judge                     | 🟡 In progress | PRs #6–#8 merged; admin UI and real-Judge0 fixes open. |
-| 3 Battle + Realtime                    | ⬜             |                                                        |
-| 4 Rating / Leaderboard / Notifications | ⬜             |                                                        |
-| 5 Frontend polish                      | ⬜             |                                                        |
-| 6 Hardening                            | ⬜             |                                                        |
-| 7 AI                                   | ⬜             |                                                        |
-| 8 Migration + Cutover                  | ⬜             |                                                        |
+| Phase                                  | Status         | Notes / links                                        |
+| -------------------------------------- | -------------- | ---------------------------------------------------- |
+| 0 Foundation                           | ✅ Done        | PR #1 merged 2026-11-10.                             |
+| 1 Identity / User / Gateway / Web auth | ✅ Done        | PRs #2–#4 merged; web on `phase-1/web` (PR #5).      |
+| 2 Problems + Judge                     | 🟡 In progress | PRs #6–#10 merged; judge ops on `phase-2/judge-ops`. |
+| 3 Battle + Realtime                    | ⬜             |                                                      |
+| 4 Rating / Leaderboard / Notifications | ⬜             |                                                      |
+| 5 Frontend polish                      | ⬜             |                                                      |
+| 6 Hardening                            | ⬜             |                                                      |
+| 7 AI                                   | ⬜             |                                                      |
+| 8 Migration + Cutover                  | ⬜             |                                                      |
 
 ### Resume here (Phase 1 complete, 2026-11-11)
 
@@ -2029,10 +2029,15 @@ It found three bugs that fake-judge0 couldn't show, all fixed with regression te
 2. **Players got 404 right after publish:** judge-service cached the draft spec read by calibration for 30 s. Only published specs are cached now.
 3. **Derived limits ignored runtime startup:** Python and Node use ~1 s CPU before user code (trivial program: cpp 3 ms, java 82 ms, python 972 ms, javascript 1038 ms), so a limit derived from C++ (min 1000 ms) would TLE every correct JavaScript solution. Derived limits now add 1.5 × `LANGUAGE_STARTUP_MS` (`@cb/contracts`).
 
-**Remaining for Phase 2:**
+**Judge operations (branch `phase-2/judge-ops`):**
 
-1. Judge drift job (§14.8) and the Postgres-polling degraded mode for judge workers (§18.1).
-2. The judge's daily budget counts file runs, while RapidAPI counts batch requests (a 3-file batch = 1). Safe but ~3× too strict; count requests instead.
+- **Budget in Judge0 requests:** dispatch reserves one unit per batch request (what RapidAPI counts); intake costs a Submit 1–2 (one per stage), a Run 1, a calibration 1. `/internal/capacity` adds `level`.
+- **Degradation ladder (§14.6.6):** `degradationLevel()` in judge-core. Below 30% left, Runs with custom input get 503; below 15%, one Run per user per minute; below 5%, `level = no_new_matches` for battle-service. Submits are never limited by the ladder. Public `GET /api/v1/judge/status` → `{ level, available }` for a banner.
+- **Drift (§14.8):** `judge-drift` queue with a weekly scheduler (Mon 03:00 UTC) and a manual trigger. Fixed C++ and Python benchmarks run in one batch request; the first three successful checks are the baseline (`driftOutcome()` in judge-core); beyond ±20% the factor (0.5–2) multiplies every CPU limit except calibration overrides. `judge_drift_checks` table; every process reloads the factor every 5 minutes. Admin page `/admin/judge` (quota, level, breaker, drift, "run a check now"). The metric waits for the Phase 6 metrics pipeline.
+- **Degraded mode (§18.1):** while the BullMQ Redis is down, a leader loop (every 2 s) claims queued submissions with `FOR UPDATE SKIP LOCKED` and syncs running ones directly; the poll-schedule position comes from the time since the stage started, so the 5-minute give-up still holds. Scheduling a poll never waits more than 2 s on Redis, and the sweeper pauses while the loop runs. Leftover jobs are no-ops when Redis returns.
+- 28 judge integration tests (request counting, ladder, drift baseline and factor, degraded mode end to end), plus unit tests for the pure parts.
+
+**Remaining for Phase 2:** nothing blocking. Phase 3 needs the hosting decision (Next.js on the VM vs Vercel) first.
 
 The `battle.match.started.v1` "seen" consumer in problem-service waits for battle-service (Phase 3).
 
@@ -2059,3 +2064,4 @@ Deferred: an identity admin endpoint to change roles (the `identity.user.role_ch
 - 2026-11-10: Calibration decisions. Reference runs go through judge-service's internal `calibrate` mode instead of calling Judge0 from problem-service, so budget, breaker, blobs and checkers stay in one place. Each run asks for 15 s CPU (capped at the instance maximum) and records per-file times; limits are 3 × the slowest AC time (own language if it has an AC reference, else C++ × `LANGUAGE_TIME_FACTORS`, now shared in `@cb/contracts/constants`), rounded up to 100 ms, clamped to [1000 ms, instance max]. `NO_CPP_BASELINE` is only raised when no C++ AC reference ran on a file (a failing one is already `REFERENCE_FAILED`). A version change during calibration fails it with `PROBLEM_CHANGED`. problem-service now needs Redis (`REDIS_URL`) for its BullMQ worker.
 - 2026-11-11: Admin UI decisions. Admin pages are client-rendered behind the `src/proxy.ts` hint guard and a role check; the gateway and problem-service stay the authority (plan §21 said SSR; nothing on these pages needs SEO or a fast first paint). Statements render with react-markdown + remark-gfm + remark-math + rehype-katex: no raw HTML, `javascript:` links dropped, KaTeX `trust: false`; the same component will render statements for players. Reference code is a plain textarea for now; CodeMirror arrives with the battle room (Phase 3). The publish checklist comes from the server (`publishBlockers` on the admin view) instead of re-implementing the rules in the browser. Both proxies drop the `Expect` header.
 - 2026-11-11: Real Judge0 decisions. `max_processes_and_or_threads` is 60 for every language (Judge0 CE's wrapper forks; fork bombs stay inside isolate). judge-service caches only published judge specs. Calibration adds `1.5 × LANGUAGE_STARTUP_MS[lang]` to limits derived from C++ (measured on hosted Judge0 CE 1.14; re-measure on another instance); a language's own AC reference already includes its startup. Free RapidAPI plan: 50 batch requests/day.
+- 2026-11-12: Judge ops decisions. The budget unit is one Judge0 request that creates submissions (RapidAPI's count); GETs are free. The degradation ladder limits only Runs, never Submits. Drift baseline = the first three successful checks, kept fixed (limits were calibrated on that hardware). Degraded mode runs on the elected leader and claims with SKIP LOCKED, so a BullMQ worker racing on recovery is harmless.

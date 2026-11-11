@@ -5,6 +5,7 @@ import {
   date,
   index,
   integer,
+  jsonb,
   numeric,
   pgTable,
   smallint,
@@ -122,6 +123,25 @@ export const judgeBudgetDaily = pgTable('judge_budget_daily', {
   callsLimit: integer('calls_limit').notNull(),
 });
 
+/**
+ * Weekly drift checks (plan §14.8): benchmark CPU times and the resulting limit factor. The first
+ * successful checks are the baseline; the latest successful check's factor is the one in force.
+ */
+export const judgeDriftChecks = pgTable(
+  'judge_drift_checks',
+  {
+    id: uuid('id').primaryKey(),
+    ranAt: timestamp('ran_at', { withTimezone: true }).notNull().defaultNow(),
+    /** CPU ms per benchmark, e.g. { cpp: 310, python: 1820 }; null when the check failed. */
+    samples: jsonb('samples').$type<Record<string, number>>(),
+    ratio: numeric('ratio', { precision: 5, scale: 2 }),
+    factor: numeric('factor', { precision: 4, scale: 2 }).notNull(),
+    error: text('error'),
+  },
+  (t) => [index('judge_drift_checks_ran_at_idx').on(t.ranAt)],
+);
+
+export type DriftCheckRow = typeof judgeDriftChecks.$inferSelect;
 export type SubmissionRow = typeof submissions.$inferSelect;
 export type JudgeRunRow = typeof judgeRuns.$inferSelect;
 export type LanguageProfileRow = typeof languageProfiles.$inferSelect;

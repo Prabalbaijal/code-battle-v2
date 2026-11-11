@@ -43,6 +43,36 @@ export const judgingRepository = {
     return s;
   },
 
+  /**
+   * Degraded mode (plan §18.1): Postgres as the backup queue. Claims the oldest queued submission
+   * that BullMQ hasn't picked up; SKIP LOCKED lets several workers claim without waiting on each other.
+   */
+  async claimNextQueued(ex: Executor, olderThanSec: number): Promise<SubmissionRow | undefined> {
+    const { rows } = await ex.execute<{ id: string }>(
+      sql`update submissions set status = 'running', stage = 1
+          where id = (
+            select id from submissions
+            where status = 'queued' and submitted_at < now() - make_interval(secs => ${olderThanSec})
+            order by submitted_at
+            for update skip locked
+            limit 1
+          )
+          returning id`,
+    );
+    const id = rows[0]?.id;
+    return id ? this.findSubmission(ex, id) : undefined;
+  },
+
+  async runningSubmissionIds(ex: Executor, limit: number): Promise<string[]> {
+    const rows = await ex
+      .select({ id: submissions.id })
+      .from(submissions)
+      .where(eq(submissions.status, 'running'))
+      .orderBy(submissions.submittedAt)
+      .limit(limit);
+    return rows.map((r) => r.id);
+  },
+
   async updateSubmission(
     ex: Executor,
     id: string,
