@@ -25,10 +25,13 @@
     "drizzle-kit": "^0.31.11"
   },
   "dependencies": {
+    "@cb/auth": "workspace:*",
     "@cb/contracts": "workspace:*",
     "@cb/db": "workspace:*",
     "@cb/env": "workspace:*",
+    "@cb/errors": "workspace:*",
     "@cb/events": "workspace:*",
+    "@cb/http-client": "workspace:*",
     "@cb/http-server": "workspace:*",
     "@cb/idempotency": "workspace:*",
     "@cb/ids": "workspace:*",
@@ -39,6 +42,7 @@
     "bullmq": "^6.7.2",
     "drizzle-orm": "^0.45.4",
     "fastify": "^5.12.8",
+    "kafkajs": "^2.2.4",
     "zod": "^4.6.7"
   }
 }

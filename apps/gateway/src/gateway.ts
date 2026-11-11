@@ -15,6 +15,7 @@ import type { Logger } from '@cb/logger';
 import type { RateLimiter } from '@cb/rate-limit';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { IncomingHttpHeaders } from 'node:http';
+import { registerBff } from './bff.js';
 import type { Env } from './config/env.js';
 import {
   ROUTES,
@@ -196,6 +197,8 @@ export async function buildGateway(d: GatewayDeps): Promise<HttpServer> {
     await app.register(proxy, options);
   }
 
+  // aggregation endpoints the gateway answers itself (the profile page)
+  registerBff(app, { urls, auth, timeoutMs: Math.min(env.UPSTREAM_TIMEOUT_MS, 5000) });
   registerOps(app, urls);
   await registerDocs(app, urls);
   return app;

@@ -1,4 +1,11 @@
-import { battleEvents, judgeEvents, ratingEvents, userEvents, type EnvelopeBase } from '@cb/contracts';
+import {
+  battleEvents,
+  judgeEvents,
+  notificationEvents,
+  ratingEvents,
+  userEvents,
+  type EnvelopeBase,
+} from '@cb/contracts';
 import { describe, expect, it } from 'vitest';
 import { route } from './delivery.js';
 
@@ -151,6 +158,24 @@ describe('route', () => {
     ]);
     const hidden = { ...data, delta: 0, reason: 'visibility', matchId: null, hidden: true };
     expect(route(env(ratingEvents.statsChangedV1.type, hidden, [A])).deliveries).toEqual([]);
+  });
+
+  it('a notification goes to its owner as notification:new', () => {
+    const notification = {
+      id: S,
+      type: 'friend_request',
+      payload: { from: { id: A, username: 'alice', fullname: 'Alice', avatarUrl: null } },
+      readAt: null,
+      createdAt: '2026-11-12T10:00:00.000Z',
+    };
+    const r = route(env(notificationEvents.notificationUpsertedV1.type, { userId: B, notification }, [B]));
+    expect(r.deliveries).toEqual([
+      {
+        to: { userIds: [B] },
+        event: 'notification:new',
+        message: expect.objectContaining({ data: { notification } }),
+      },
+    ]);
   });
 
   it('unknown events are ignored', () => {

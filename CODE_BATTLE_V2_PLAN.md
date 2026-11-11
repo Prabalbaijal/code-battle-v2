@@ -403,8 +403,9 @@ Each service has its own Postgres database, and an `outbox` and `processed_event
 ### 8.8 notification-service
 
 - **Owns:** in-app notifications and the email log.
-- **API:** `GET /notifications?cursor=`, `POST /notifications/:id/read`, `POST /notifications/read-all`, `GET /notifications/unread-count`
-- **Consumes:** friendship and challenge events (creates in-app notifications), `battle.match.completed.v1`.
+- **API:** `GET /notifications?cursor=`, `POST /notifications/:id/read`, `POST /notifications/read-all`, `GET /notifications/unread-count` (capped at 100: the badge shows 99+)
+- **Consumes:** friendship and challenge events (creates in-app notifications), `battle.match.completed.v1`, `rating.stats.changed.v1` (the coin delta on the match notification).
+- **Events out:** `notification.notification.upserted.v1` (topic `notification.events`) → realtime `notification:new`.
 - **Jobs:** `email-send`. Templates: verify-email, reset-password. Deduplicated by `dedupeKey`.
 
 ### 8.9 realtime
@@ -1835,8 +1836,8 @@ Script: `scripts/migrate-v1/` (TS). It is **idempotent** (upserts on `legacy_mon
 ### Phase 4: Rating, leaderboard, notifications
 
 - [x] rating-service: stats from registration, ledger application (idempotent), ZSET, top-50/my-rank/friends leaderboard, Postgres fallback, rebuild job, stats history API. _(4A. The ZSET moves from rating's own `rating.stats.changed.v1`, i.e. after commit. The Postgres fallback orders exactly like the ZSET (coins, whole second, member desc), so both answer the same. The friends board comes straight from Postgres. Realtime pushes `stats:updated`.)_
-- [ ] notification-service: in-app notifications from events, unread count, read APIs.
-- [ ] gateway BFF: profile and lobby aggregation.
+- [x] notification-service: in-app notifications from events, unread count, read APIs. _(4B. Friend request / accepted, challenge received (answered → read, expired → stays unread as a missed challenge), match result merged with rating's real coin change in either order. `UNIQUE (user_id, dedupe_key)` + inbox. Each change goes out as `notification.notification.upserted.v1` on a new `notification.events` topic; realtime pushes `notification:new`.)_
+- [x] gateway BFF: profile and lobby aggregation. _(4B. `GET /api/v1/bff/profile/:username` = profile + stats + your own last 10 matches with the real coin delta; `GET /api/v1/bff/history?cursor=` pages it. Calls go out with the caller's own token; stats/ledger degrade to null. The lobby needs no BFF: realtime's presence routes already return profiles in one call.)_
 - [ ] Web: leaderboard (ISR + rank + presence dots), profile (charts, history), notification centre, on-demand revalidation.
 
 **DoD:**
