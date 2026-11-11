@@ -10,6 +10,7 @@ export * from './http/auth.js';
 export * from './http/battle.js';
 export * from './http/common.js';
 export * from './http/judge.js';
+export * from './http/presence.js';
 export * from './http/problems.js';
 export * from './http/users.js';
 export * from './jobs/email.js';

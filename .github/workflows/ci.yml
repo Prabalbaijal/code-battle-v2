@@ -62,6 +62,6 @@ jobs:
       - uses: docker/setup-buildx-action@v3
       - name: Build service images
         run: |
-          for app in @cb/fake-judge0 @cb/template-service @cb/identity-service @cb/notification-service @cb/user-service @cb/gateway @cb/problem-service @cb/judge-service @cb/battle-service; do
+          for app in @cb/fake-judge0 @cb/template-service @cb/identity-service @cb/notification-service @cb/user-service @cb/gateway @cb/problem-service @cb/judge-service @cb/battle-service @cb/realtime-service; do
             docker buildx build -f infra/docker/node-app.Dockerfile --build-arg APP=$app --load -t "cb/${app#@cb/}:ci" .
           done

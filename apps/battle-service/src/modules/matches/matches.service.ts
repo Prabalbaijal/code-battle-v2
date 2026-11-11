@@ -147,6 +147,7 @@ export class MatchService {
           userIds: a.userIds,
           startedAt: m.startedAt!.toISOString(),
           endsAt: m.endsAt!.toISOString(),
+          version: m.version,
         },
       });
       await addJobToOutbox(tx, {
@@ -195,7 +196,7 @@ export class MatchService {
     await this.d.outbox.add(tx, battleEvents.matchAbortedV1, {
       key: matchId,
       recipients: userIds,
-      data: { matchId, userIds, reason },
+      data: { matchId, userIds, reason, version: m.version },
     });
     return true;
   }
@@ -287,7 +288,7 @@ export class MatchService {
     await this.d.outbox.add(tx, battleEvents.matchDecidingV1, {
       key: m.id,
       recipients: userIds,
-      data: { matchId: m.id, userIds, decideDeadline: u.decideDeadline!.toISOString() },
+      data: { matchId: m.id, userIds, decideDeadline: u.decideDeadline!.toISOString(), version: u.version },
     });
     // the cap resolves the match even if no more verdicts come (the reconciler is the backstop)
     await addJobToOutbox(tx, {
@@ -342,6 +343,7 @@ export class MatchService {
         >,
         startedAt: u.startedAt!.toISOString(),
         endedAt: u.endedAt!.toISOString(),
+        version: u.version,
       },
     });
     return true;

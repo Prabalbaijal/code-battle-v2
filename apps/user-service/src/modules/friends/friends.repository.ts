@@ -30,6 +30,16 @@ export interface KeysetAfter {
 
 /** SQL only (plan §9.2). */
 export const friendsRepository = {
+  /** Accepted friends' ids (realtime fans presence out to them). */
+  async friendIds(ex: Executor, me: string, limit: number): Promise<string[]> {
+    const rows = await ex
+      .select({ id: otherOf(me) })
+      .from(friendships)
+      .where(and(involves(me), eq(friendships.status, 'accepted')))
+      .limit(limit);
+    return rows.map((r) => String(r.id));
+  },
+
   /**
    * Insert a pending request, or turn a request *I* ignored earlier into my own pending request.
    * No row returned → the pair already exists in another state (caller decides).

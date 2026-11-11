@@ -246,6 +246,12 @@ describe('friends', () => {
     const list = (await call('GET', '/api/v1/friends', b)).json();
     expect(list.items.map((f: Profile) => f.id)).toEqual([a.id]);
 
+    // realtime's presence fan-out reads friend ids over an internal route
+    const svc = { authorization: `Bearer ${await signInternalToken(INTERNAL_SECRET, 'realtime-service')}` };
+    const ids = await call('GET', `/internal/users/${a.id}/friend-ids`, undefined, undefined, svc);
+    expect(ids.json()).toEqual({ ids: [b.id] });
+    expect((await call('GET', `/internal/users/${a.id}/friend-ids`, a)).statusCode).toBe(401);
+
     expect((await call('DELETE', `/api/v1/friends/${a.id}`, b)).statusCode).toBe(204);
     expect(await relationship(a, b)).toBe('none');
     expect((await call('DELETE', `/api/v1/friends/${a.id}`, b)).statusCode).toBe(404);

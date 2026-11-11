@@ -9,8 +9,8 @@ import type { Queue } from 'bullmq';
 import type { FastifyRequest } from 'fastify';
 import type { Kafka, Producer } from 'kafkajs';
 import {
-  everyoneOnline,
   HttpJudgeCapacity,
+  HttpPresence,
   HttpProblemSelector,
   HttpUserDirectory,
   type JudgeCapacity,
@@ -21,6 +21,7 @@ import {
 import type { Env } from './config/env.js';
 import { ChallengeService } from './modules/challenges/challenges.service.js';
 import { MatchService } from './modules/matches/matches.service.js';
+import { TabLeaseService } from './modules/matches/tab-lease.js';
 import { QUEUES } from './queues.js';
 
 /** battle-service consumes judge events (the submission read model). */
@@ -42,6 +43,7 @@ export interface Infra {
   internalAuth: (req: FastifyRequest) => Promise<void>;
   challenges: ChallengeService;
   matches: MatchService;
+  tabLease: TabLeaseService;
   close(): Promise<void>;
 }
 
@@ -95,7 +97,7 @@ export async function createInfra(env: Env, logger: Logger, opts: InfraOptions =
     outbox,
     logger,
     users,
-    presence: opts.presence ?? everyoneOnline,
+    presence: opts.presence ?? new HttpPresence({ baseUrl: env.REALTIME_SERVICE_URL, ...internal }, logger),
     judge: opts.judge ?? new HttpJudgeCapacity({ baseUrl: env.JUDGE_SERVICE_URL, ...internal }),
     challengeTtlMs: env.CHALLENGE_TTL_SECONDS * 1000,
     afterCommit,
@@ -128,6 +130,7 @@ export async function createInfra(env: Env, logger: Logger, opts: InfraOptions =
     internalAuth: createInternalAuth(env.INTERNAL_SERVICE_SECRET),
     challenges,
     matches,
+    tabLease: new TabLeaseService({ redis: safeRedis, matches }),
     async close() {
       await relay.stop();
       await dispatcher.stop();

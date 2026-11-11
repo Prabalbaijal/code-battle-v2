@@ -16,6 +16,7 @@ export async function buildApp(infra: Infra): Promise<HttpServer> {
   registerBattleRoutes(app, {
     challenges: infra.challenges,
     matches: infra.matches,
+    tabLease: infra.tabLease,
     auth: infra.authHooks,
     idem: createIdempotency({ db: infra.db.db, getOwner: (req) => authUser(req).userId }),
     internalAuth: infra.internalAuth,

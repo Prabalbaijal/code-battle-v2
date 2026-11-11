@@ -51,12 +51,19 @@ export const matchStartedV1 = defineEvent(
     userIds: z.array(z.uuid()),
     startedAt: z.iso.datetime(),
     endsAt: z.iso.datetime(),
+    /** `matches.version` after this change: the socket `seq` (plan §13.2). */
+    version: z.number().int(),
   }),
 );
 export const matchDecidingV1 = defineEvent(
   TOPICS.battle,
   'battle.match.deciding.v1',
-  z.object({ matchId: z.uuid(), userIds: z.array(z.uuid()), decideDeadline: z.iso.datetime() }),
+  z.object({
+    matchId: z.uuid(),
+    userIds: z.array(z.uuid()),
+    decideDeadline: z.iso.datetime(),
+    version: z.number().int(),
+  }),
 );
 export const matchCompletedV1 = defineEvent(
   TOPICS.battle,
@@ -70,6 +77,7 @@ export const matchCompletedV1 = defineEvent(
     results: z.record(z.string(), z.enum(['win', 'loss', 'draw'])),
     startedAt: z.iso.datetime(),
     endedAt: z.iso.datetime(),
+    version: z.number().int(),
   }),
 );
 export const matchAbortedV1 = defineEvent(
@@ -80,5 +88,6 @@ export const matchAbortedV1 = defineEvent(
     userIds: z.array(z.uuid()),
     /** Why, in words the UI can show (e.g. no new problems for this pair). */
     reason: z.string(),
+    version: z.number().int(),
   }),
 );

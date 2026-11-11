@@ -9,12 +9,15 @@ import {
   matchStateSchema,
   pageSchema,
   participationSchema,
+  tabLeaseBodySchema,
+  tabLeaseResultSchema,
 } from '@cb/contracts';
 import type { HttpServer } from '@cb/http-server';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { ChallengeService } from './challenges/challenges.service.js';
 import type { MatchService } from './matches/matches.service.js';
+import type { TabLeaseService } from './matches/tab-lease.js';
 
 export interface IdempotencyHooks {
   preHandler: (req: FastifyRequest, reply: FastifyReply) => Promise<unknown>;
@@ -24,6 +27,7 @@ export interface IdempotencyHooks {
 export interface BattleRouteDeps {
   challenges: ChallengeService;
   matches: MatchService;
+  tabLease: TabLeaseService;
   auth: AuthHooks;
   idem: IdempotencyHooks;
   internalAuth: (req: FastifyRequest) => Promise<void>;
@@ -107,6 +111,16 @@ export function registerBattleRoutes(app: HttpServer, d: BattleRouteDeps): void 
       await d.matches.forfeit(authUser(req).userId, req.params.id);
       return reply.code(204).send();
     },
+  );
+
+  // one tab per match (plan §13.5)
+  app.post(
+    '/api/v1/matches/:id/tab-lease',
+    {
+      schema: { params: idParam, body: tabLeaseBodySchema, response: { 200: tabLeaseResultSchema } },
+      preHandler: signedIn,
+    },
+    async (req) => d.tabLease.acquire(authUser(req).userId, req.params.id, req.body.tabId, req.body.takeover),
   );
 
   // ---- internal: judge intake (plan §11.3) ----

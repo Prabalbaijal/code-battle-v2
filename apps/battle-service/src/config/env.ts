@@ -17,6 +17,7 @@ export const envSchema = baseEnvSchema.extend({
   PROBLEM_SERVICE_URL: z.string().url().default('http://localhost:4004'),
   JUDGE_SERVICE_URL: z.string().url().default('http://localhost:4005'),
   USER_SERVICE_URL: z.string().url().default('http://localhost:4002'),
+  REALTIME_SERVICE_URL: z.string().url().default('http://localhost:4010'),
   CSRF_REQUIRED: envBool(true),
   /** Plan §23.5. Server time only. */
   MATCH_DURATION_SECONDS: z.coerce.number().int().min(60).default(1800),

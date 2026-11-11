@@ -25,6 +25,8 @@ export interface FriendsRouteDeps {
   auth: AuthHooks;
   idem: IdempotencyHooks;
   requestLimiter: RateLimiter;
+  /** Service tokens for /internal routes (realtime). */
+  internalAuth?: (req: FastifyRequest) => Promise<void>;
 }
 
 const BASE = '/api/v1/friends';
@@ -123,4 +125,19 @@ export function registerFriendsRoutes(app: HttpServer, d: FriendsRouteDeps): voi
       return reply.code(204).send();
     },
   );
+
+  // Service-to-service: realtime's presence fan-out. Never routed by the gateway.
+  if (d.internalAuth) {
+    app.get(
+      '/internal/users/:userId/friend-ids',
+      {
+        schema: {
+          params: z.object({ userId: z.uuid() }),
+          response: { 200: z.object({ ids: z.array(z.uuid()) }) },
+        },
+        preHandler: [d.internalAuth],
+      },
+      async (req) => ({ ids: await s.friendIds(req.params.userId) }),
+    );
+  }
 }

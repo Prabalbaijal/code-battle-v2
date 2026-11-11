@@ -400,6 +400,20 @@ describe('finishing a match', () => {
     expect((await call('GET', `/api/v1/matches/${matchId}/state`, outsider)).statusCode).toBe(404);
   });
 
+  it('one tab per match: a second tab is refused until it takes over ("Use here")', async () => {
+    const { a, matchId } = await started();
+    const lease = (tabId: string, takeover = false) =>
+      call('POST', `/api/v1/matches/${matchId}/tab-lease`, a, { tabId, takeover });
+    expect((await lease('tab-one-1234')).json()).toEqual({ granted: true, holder: 'tab-one-1234' });
+    expect((await lease('tab-two-1234')).json()).toEqual({ granted: false, holder: 'tab-one-1234' });
+    expect((await lease('tab-one-1234')).json().granted).toBe(true); // renewal
+    expect((await lease('tab-two-1234', true)).json()).toEqual({ granted: true, holder: 'tab-two-1234' });
+    expect((await lease('tab-one-1234')).json()).toEqual({ granted: false, holder: 'tab-two-1234' });
+    const outsider = await player();
+    const r = await call('POST', `/api/v1/matches/${matchId}/tab-lease`, outsider, { tabId: 'tab-x-12345' });
+    expect(r.statusCode).toBe(404);
+  });
+
   it('end to end through Kafka: judge events build the read model and decide the winner', async () => {
     const { a, matchId } = await started();
     const submissionId = newId();

@@ -86,3 +86,16 @@ export const matchHistoryItemSchema = z.object({
   endedAt: z.iso.datetime().nullable(),
 });
 export type MatchHistoryItem = z.infer<typeof matchHistoryItemSchema>;
+
+/** Plan §13.5: one tab plays a match; others show "Use here". Renew every 10 s (lease 30 s). */
+export const tabLeaseBodySchema = z.object({
+  tabId: z.string().min(8).max(64),
+  /** "Use here": take the lease from another tab. */
+  takeover: z.boolean().default(false),
+});
+export const tabLeaseResultSchema = z.object({
+  granted: z.boolean(),
+  /** The tab holding the lease now. */
+  holder: z.string().nullable(),
+});
+export type TabLeaseResult = z.infer<typeof tabLeaseResultSchema>;
