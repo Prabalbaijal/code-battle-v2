@@ -54,13 +54,16 @@ beforeAll(async () => {
     DATABASE_URL: pg.value.url,
     REDIS_URL: redis.value.url,
     EMAIL_RATE_PER_SEC: '50',
+    // email only: no consumer starts, so Kafka is never contacted
+    KAFKA_BROKERS: 'localhost:1',
+    INTERNAL_SERVICE_SECRET: 'notification-test-internal-secret-0123456789',
   });
   await migrate(env.DATABASE_URL);
   infra = await createInfra(env, logger, {
     wrapProvider: (fake) => (provider = new ScriptedProvider(fake)),
   });
   app = await buildApp(infra);
-  worker = await startWorker(infra);
+  worker = await startWorker(infra, { inApp: false });
   // Producer side as identity configures it, but with fast backoff for tests.
   queue = createQueue(QUEUES.email, infra.queueRedis, { attempts: 4, backoff: { type: 'fixed', delay: 50 } });
 });

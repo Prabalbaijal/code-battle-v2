@@ -90,6 +90,8 @@ async function gateway(overrides: Record<string, string> = {}): Promise<HttpServ
     SERVICE_URL_PROBLEM: urlOf(users),
     SERVICE_URL_JUDGE: urlOf(users),
     SERVICE_URL_BATTLE: urlOf(users),
+    SERVICE_URL_RATING: urlOf(users),
+    SERVICE_URL_NOTIFICATION: urlOf(users),
     SERVICE_URL_REALTIME: urlOf(users),
     ...overrides,
   });
@@ -422,7 +424,16 @@ describe('rate limits and failures', () => {
     const ups = await dead.inject({ method: 'GET', url: '/health/upstreams' });
     expect([ups.statusCode, ups.json().checks]).toEqual([
       503,
-      { identity: 'ok', user: 'down', problem: 'ok', judge: 'ok', battle: 'ok', realtime: 'ok' },
+      {
+        identity: 'ok',
+        user: 'down',
+        problem: 'ok',
+        judge: 'ok',
+        battle: 'ok',
+        rating: 'ok',
+        notification: 'ok',
+        realtime: 'ok',
+      },
     ]);
     expect((await gw.inject({ method: 'GET', url: '/health/upstreams' })).statusCode).toBe(200);
   });
@@ -440,5 +451,143 @@ describe('docs', () => {
     expect(Object.keys(spec.paths).sort()).toEqual(['/api/v1/friends', '/api/v1/users/me']);
     expect(spec.servers).toEqual([{ url: '/' }]);
     expect((await gw.inject({ method: 'GET', url: '/docs/specs/nope' })).statusCode).toBe(404);
+  });
+});
+
+describe('profile BFF', () => {
+  it('joins profile, stats and (own) history with the real coin delta; degrades when rating is down', async () => {
+    const me = await userToken();
+    const other = randomUUID();
+    const [m1, m2] = [randomUUID(), randomUUID()];
+    let ratingDown = false;
+    const seen: Record<string, string | undefined> = {};
+    const up = Fastify();
+    const profile = (id: string, username: string) => ({
+      id,
+      username,
+      fullname: username,
+      avatarUrl: null,
+      bio: null,
+      createdAt: '2026-11-01T00:00:00.000Z',
+    });
+    up.get('/api/v1/users/:username', async (req, reply) => {
+      const { username } = req.params as { username: string };
+      seen.userAuth = req.headers.authorization;
+      if (username === 'ghost')
+        return reply
+          .code(404)
+          .send({ error: { code: 'NOT_FOUND', message: 'User not found', requestId: 'x' } });
+      return profile(username === 'me' ? me.userId : other, username);
+    });
+    up.get('/api/v1/stats/:id', async (req, reply) => {
+      if (ratingDown)
+        return reply.code(500).send({ error: { code: 'INTERNAL', message: 'boom', requestId: 'x' } });
+      const { id } = req.params as { id: string };
+      return {
+        userId: id,
+        coins: 370,
+        level: 1,
+        wins: 1,
+        losses: 1,
+        draws: 0,
+        streak: 0,
+        bestStreak: 1,
+        updatedAt: '2026-11-02T00:00:00.000Z',
+      };
+    });
+    up.get('/api/v1/matches/history', async (req) => {
+      seen.historyAuth = req.headers.authorization;
+      const item = (matchId: string, status: string, result: string | null) => ({
+        matchId,
+        status,
+        opponent: { id: other, username: 'rival', fullname: 'Rival', avatarUrl: null },
+        result,
+        endReason: status === 'completed' ? 'solved' : 'aborted',
+        problemSlug: 'pair-sums',
+        startedAt: '2026-11-02T00:00:00.000Z',
+        endedAt: '2026-11-02T00:10:00.000Z',
+      });
+      return { items: [item(m1, 'completed', 'loss'), item(m2, 'aborted', null)], nextCursor: null };
+    });
+    up.get('/api/v1/stats/me/ledger', async (req, reply) => {
+      if (ratingDown)
+        return reply.code(503).send({ error: { code: 'SERVICE_UNAVAILABLE', message: 'x', requestId: 'x' } });
+      seen.ledgerQuery = (req.query as { matchIds?: string }).matchIds;
+      return {
+        items: [
+          {
+            id: randomUUID(),
+            matchId: m1,
+            reason: 'match_loss',
+            delta: -50,
+            applied: -30,
+            balanceAfter: 0,
+            createdAt: '2026-11-02T00:10:00.000Z',
+          },
+        ],
+        nextCursor: null,
+      };
+    });
+    await up.listen({ host: '127.0.0.1', port: 0 });
+    const g = await gateway({
+      SERVICE_URL_USER: urlOf(up),
+      SERVICE_URL_RATING: urlOf(up),
+      SERVICE_URL_BATTLE: urlOf(up),
+    });
+    const bearer = { authorization: `Bearer ${me.token}`, 'x-forwarded-for': ip() };
+    try {
+      const mine = await g.inject({ method: 'GET', url: '/api/v1/bff/profile/me', headers: bearer });
+      expect(mine.statusCode, mine.body).toBe(200);
+      expect(mine.json()).toMatchObject({
+        isMe: true,
+        profile: { id: me.userId, username: 'me' },
+        stats: { coins: 370, level: 1 },
+      });
+      expect(
+        mine
+          .json()
+          .history.items.map((h: { matchId: string; coinDelta: number | null }) => [h.matchId, h.coinDelta]),
+      ).toEqual([
+        [m1, -30], // the real change, not the −50 asked for
+        [m2, 0], // aborted: no coins moved
+      ]);
+      expect(seen.historyAuth).toBe(`Bearer ${me.token}`); // the caller's own credentials
+      expect(seen.ledgerQuery).toBe(`${m1},${m2}`);
+
+      // someone else's profile: no history; signed out works too
+      const theirs = await g.inject({ method: 'GET', url: '/api/v1/bff/profile/rival', headers: bearer });
+      expect(theirs.json()).toMatchObject({ isMe: false, history: null, stats: { coins: 370 } });
+      const anon = await g.inject({
+        method: 'GET',
+        url: '/api/v1/bff/profile/rival',
+        headers: { 'x-forwarded-for': ip() },
+      });
+      expect(anon.statusCode).toBe(200);
+
+      // upstream 404 keeps its status and code
+      const ghost = await g.inject({ method: 'GET', url: '/api/v1/bff/profile/ghost', headers: bearer });
+      expect(ghost.statusCode).toBe(404);
+      expect(ghost.json().error.code).toBe('NOT_FOUND');
+
+      // rating down: the page still renders, stats null and deltas unknown
+      ratingDown = true;
+      const degraded = await g.inject({ method: 'GET', url: '/api/v1/bff/profile/me', headers: bearer });
+      expect(degraded.statusCode).toBe(200);
+      expect(degraded.json().stats).toBeNull();
+      expect(degraded.json().history.items.map((h: { coinDelta: number | null }) => h.coinDelta)).toEqual([
+        null,
+        null,
+      ]);
+
+      // the history page itself needs a signed-in user
+      expect(
+        (await g.inject({ method: 'GET', url: '/api/v1/bff/history', headers: { 'x-forwarded-for': ip() } }))
+          .statusCode,
+      ).toBe(401);
+      const page = await g.inject({ method: 'GET', url: '/api/v1/bff/history?limit=5', headers: bearer });
+      expect(page.statusCode).toBe(200);
+    } finally {
+      await up.close();
+    }
   });
 });

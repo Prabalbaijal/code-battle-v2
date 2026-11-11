@@ -1,6 +1,7 @@
 import {
   battleEvents,
   judgeEvents,
+  notificationEvents,
   ratingEvents,
   userEvents,
   type EnvelopeBase,
@@ -153,6 +154,13 @@ export function route(
       };
     }
 
+    case notificationEvents.notificationUpsertedV1.type: {
+      const d = parse(notificationEvents.notificationUpsertedV1);
+      return {
+        deliveries: [deliver(recipients, 'notification:new', env, { notification: d.notification })],
+        effects: [],
+      };
+    }
     case ratingEvents.statsChangedV1.type: {
       const d = parse(ratingEvents.statsChangedV1);
       if (d.reason === 'visibility') return { deliveries: [], effects: [] };

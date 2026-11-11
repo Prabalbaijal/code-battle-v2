@@ -1,4 +1,5 @@
-import { baseEnvSchema, loadEnv } from '@cb/env';
+import { MIN_INTERNAL_SECRET_LENGTH } from '@cb/auth';
+import { baseEnvSchema, envBool, envList, loadEnv } from '@cb/env';
 import { z } from 'zod';
 
 export const envSchema = baseEnvSchema
@@ -7,6 +8,15 @@ export const envSchema = baseEnvSchema
     PORT: z.coerce.number().int().positive().default(4003),
     DATABASE_URL: z.string().url(),
     REDIS_URL: z.string().url(),
+    KAFKA_BROKERS: envList,
+    KAFKA_SSL: envBool(false),
+    KAFKA_SASL_USERNAME: z.string().optional(),
+    KAFKA_SASL_PASSWORD: z.string().optional(),
+    JWKS_URL: z.string().url().default('http://localhost:4001/.well-known/jwks.json'),
+    CSRF_REQUIRED: envBool(true),
+    /** In-app notifications look up names (friend requests, match results) in user-service. */
+    INTERNAL_SERVICE_SECRET: z.string().min(MIN_INTERNAL_SECRET_LENGTH),
+    USER_SERVICE_URL: z.string().url().default('http://localhost:4002'),
     /** `fake` stores mail in the `fake_inbox` table (dev, tests, E2E). `brevo` sends for real. */
     EMAIL_PROVIDER: z.enum(['fake', 'brevo']).default('fake'),
     BREVO_API_KEY: z.string().min(1).optional(),

@@ -1,12 +1,13 @@
 import { z } from 'zod';
 
-/** Kafka topics. Budget: ≤ 5 topics × 2 partitions (Aiven free-tier compatible). See plan §10.2. */
+/** Kafka topics, 2 partitions each (plan §10.2). Self-hosted Redpanda, so the old 5-topic budget is gone. */
 export const TOPICS = {
   user: 'user.events',
   problem: 'problem.events',
   battle: 'battle.events',
   judge: 'judge.events',
   rating: 'rating.events',
+  notification: 'notification.events',
   /** Only used by the template service and tests. */
   template: 'template.events',
 } as const;

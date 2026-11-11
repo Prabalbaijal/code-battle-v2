@@ -1,3 +1,4 @@
+import type { Notification } from '../http/notifications.js';
 /**
  * Typed Socket.IO event maps shared by realtime nodes and the web client (plan §13.4).
  * Client → server is only `presence:ping`; everything else the client does is REST.
@@ -68,6 +69,8 @@ export interface ServerEvents {
   };
   /** The opponent's activity: no code, no details. */
   'match:opponent-activity': { matchId: string; type: 'submitted' | 'judged'; verdict?: string };
+  /** A new or changed in-app notification (upsert by id; bump the unread badge if unread and new). */
+  'notification:new': { notification: Notification };
   /** The player's coins/level changed (after a match). */
   'stats:updated': { coins: number; level: number; delta: number; matchId: string | null };
   /** The node is shutting down: reconnect (with a new ticket). */

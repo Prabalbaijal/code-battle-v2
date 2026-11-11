@@ -1,5 +1,15 @@
 import { sql } from 'drizzle-orm';
-import { check, index, integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import {
+  check,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 
 // Infra tables every service owns (outbox, inbox, dead letters, job outbox, idempotency keys).
 export { deadLetters, outbox, processedEvents } from '@cb/events';
@@ -49,3 +59,29 @@ export const fakeInbox = pgTable(
 );
 
 export type EmailLog = typeof emailLog.$inferSelect;
+
+/**
+ * In-app notifications (plan §9.7). `UNIQUE (user_id, dedupe_key)` keeps a re-published event
+ * from creating a second row (the inbox already drops redeliveries of the same envelope).
+ */
+export const notifications = pgTable(
+  'notifications',
+  {
+    id: uuid('id').primaryKey(),
+    userId: uuid('user_id').notNull(),
+    type: text('type').notNull(),
+    payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
+    dedupeKey: text('dedupe_key').notNull(),
+    readAt: timestamp('read_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('notifications_once').on(t.userId, t.dedupeKey),
+    index('notifications_unread')
+      .on(t.userId, t.createdAt.desc())
+      .where(sql`${t.readAt} is null`),
+    index('notifications_user_idx').on(t.userId, t.createdAt.desc(), t.id),
+  ],
+);
+
+export type NotificationRow = typeof notifications.$inferSelect;
