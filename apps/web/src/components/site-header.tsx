@@ -26,10 +26,14 @@ export function SiteHeader() {
 
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-background/85 backdrop-blur">
-      <div className="mx-auto flex h-14 w-full max-w-5xl items-center gap-6 px-4 sm:px-6">
-        <Link href="/" className="flex items-center gap-2 font-semibold tracking-tight">
+      <div className="mx-auto flex h-14 w-full max-w-5xl items-center gap-2 px-3 sm:gap-6 sm:px-6">
+        <Link
+          href="/"
+          className="flex shrink-0 items-center gap-2 font-semibold tracking-tight"
+          aria-label="Code Battle home"
+        >
           <Swords className="size-5 text-primary" aria-hidden />
-          Code Battle
+          <span className="hidden sm:inline">Code Battle</span>
         </Link>
 
         {!isPending && (
@@ -45,7 +49,7 @@ export function SiteHeader() {
                 href={n.href}
                 aria-current={pathname.startsWith(n.href) ? 'page' : undefined}
                 className={cn(
-                  'rounded-md px-3 py-1.5 text-muted-foreground transition-colors hover:text-foreground',
+                  'shrink-0 rounded-md px-2 py-1.5 text-muted-foreground transition-colors hover:text-foreground sm:px-3',
                   pathname.startsWith(n.href) && 'bg-muted text-foreground',
                 )}
               >
@@ -55,7 +59,7 @@ export function SiteHeader() {
           </nav>
         )}
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2">
           {isPending ? (
             <Skeleton className="h-8 w-24" />
           ) : me ? (

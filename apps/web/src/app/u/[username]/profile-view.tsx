@@ -4,7 +4,9 @@ import type { HistoryItem, PlayerStats, ProfilePageView } from '@cb/contracts';
 import { Alert, Badge, Button, Card, cn, Skeleton, UserAvatar } from '@cb/ui';
 import { CalendarDays, Coins, Flame, Swords, UserX } from 'lucide-react';
 import Link from 'next/link';
+import { LazyActivityHeatmap } from '@/components/lazy-activity';
 import { LazyCoinChart as CoinChart } from '@/components/lazy-coin-chart';
+import { ResultDonut } from '@/components/result-donut';
 import { EmptyState, RelationshipActions } from '@/components/people';
 import { isApiError, messageFor } from '@/lib/api';
 import { signed, useCoinHistory, useHistory, useProfilePage } from '@/lib/rating';
@@ -39,8 +41,8 @@ export function ProfileView({ username, initial }: { username: string; initial?:
   const { profile: p, stats, isMe, history } = page.data;
   const joined = new Date(p.createdAt).toLocaleDateString('en', { month: 'long', year: 'numeric' });
   return (
-    <div className="grid gap-6">
-      <Card className="flex flex-col gap-5 p-6 sm:flex-row sm:items-center">
+    <div className="grid min-w-0 gap-6">
+      <Card className="flex min-w-0 flex-col gap-5 p-6 sm:flex-row sm:items-center">
         <UserAvatar name={p.fullname} src={p.avatarUrl} size="lg" />
         <div className="min-w-0 flex-1">
           <h1 className="flex items-center gap-2 truncate text-2xl font-bold tracking-tight">
@@ -57,14 +59,30 @@ export function ProfileView({ username, initial }: { username: string; initial?:
       </Card>
 
       {stats ? (
-        <StatTiles stats={stats} />
+        <>
+          <StatTiles stats={stats} />
+          {stats.wins + stats.losses + stats.draws > 0 && (
+            <div className={cn('grid gap-6', isMe && 'md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]')}>
+              <Card className="grid min-w-0 content-start gap-3 p-6">
+                <h2 className="font-semibold">Results</h2>
+                <ResultDonut wins={stats.wins} losses={stats.losses} draws={stats.draws} />
+              </Card>
+              {isMe && (
+                <Card className="grid min-w-0 content-start gap-3 p-6">
+                  <h2 className="font-semibold">Activity</h2>
+                  <MyActivity />
+                </Card>
+              )}
+            </div>
+          )}
+        </>
       ) : (
         <Alert variant="warning">Battle stats are unavailable right now. Try again in a moment.</Alert>
       )}
 
       {isMe && (
         <>
-          <Card className="grid gap-3 p-6">
+          <Card className="grid min-w-0 gap-3 p-6">
             <h2 className="font-semibold">Coins over time</h2>
             {stats && stats.wins + stats.losses + stats.draws === 0 ? (
               // known from the server render: no need to wait for the ledger to say so
@@ -73,7 +91,7 @@ export function ProfileView({ username, initial }: { username: string; initial?:
               <MyCoinChart />
             )}
           </Card>
-          <Card className="grid gap-3 p-6">
+          <Card className="grid min-w-0 gap-3 p-6">
             <h2 className="font-semibold">Match history</h2>
             <History first={history} />
           </Card>
@@ -127,6 +145,14 @@ function MyCoinChart() {
   if (ledger.isError)
     return <p className="text-sm text-muted-foreground">Coin history is unavailable right now.</p>;
   return <CoinChart entries={ledger.data} />;
+}
+
+function MyActivity() {
+  const ledger = useCoinHistory(true);
+  if (ledger.isPending) return <Skeleton className="h-28" />;
+  if (ledger.isError)
+    return <p className="text-sm text-muted-foreground">Activity is unavailable right now.</p>;
+  return <LazyActivityHeatmap entries={ledger.data} />;
 }
 
 /** The BFF's first 10, then older pages on demand. */

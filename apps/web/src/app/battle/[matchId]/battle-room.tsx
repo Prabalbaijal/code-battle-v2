@@ -6,7 +6,7 @@ import { Alert, Badge, Button, Select, Skeleton, Textarea, cn } from '@cb/ui';
 import { Copy, Flag, Loader2, Play, Send, Trophy } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Group, Panel, Separator } from 'react-resizable-panels';
 import { notify } from '@/components/notices';
 import { TEMPLATES } from '@/components/templates';
@@ -14,6 +14,7 @@ import { LazyMarkdown as Markdown } from '@/components/lazy-markdown';
 import { isApiError, messageFor } from '@/lib/api';
 import { tabLease, useForfeit, useMatchState, useProblem, useSubmission, useSubmit } from '@/lib/battle';
 import { signed, useMatchCoins } from '@/lib/rating';
+import { levelFor } from '@cb/scoring';
 import { loadDraft, loadLanguage, saveDraft, saveLanguage } from '@/lib/drafts';
 import { useRealtimeEvent, useRealtimeStatus } from '@/lib/realtime';
 import { useMe, useRequireAuth } from '@/lib/session';
@@ -207,12 +208,9 @@ export function BattleRoom({ matchId }: { matchId: string }) {
           Time&apos;s up or a result depends on a verdict still being judged. Deciding…
         </div>
       )}
-      <Group orientation="horizontal" className="min-h-0 flex-1">
-        <Panel defaultSize="38%" minSize="20%">
-          <ProblemPanel problem={problem.data} />
-        </Panel>
-        <Separator className="w-1.5 bg-border transition-colors hover:bg-primary/50" />
-        <Panel minSize="30%">
+      <RoomLayout
+        problem={<ProblemPanel problem={problem.data} />}
+        workspace={
           <Workspace
             matchId={matchId}
             state={s}
@@ -220,8 +218,8 @@ export function BattleRoom({ matchId }: { matchId: string }) {
             disabled={!open || lease.blocked || (msLeft !== null && msLeft <= 0)}
             activity={activity}
           />
-        </Panel>
-      </Group>
+        }
+      />
       {lease.blocked && open && (
         <Overlay>
           <h2 className="text-xl font-semibold">This match is open in another tab</h2>
@@ -232,6 +230,78 @@ export function BattleRoom({ matchId }: { matchId: string }) {
         </Overlay>
       )}
       {(s.status === 'completed' || s.status === 'aborted') && <EndScreen state={s} meId={me.id} />}
+    </div>
+  );
+}
+
+const NARROW = '(max-width: 767px)';
+const useNarrow = () =>
+  useSyncExternalStore(
+    (cb) => {
+      const m = window.matchMedia(NARROW);
+      m.addEventListener('change', cb);
+      return () => m.removeEventListener('change', cb);
+    },
+    () => window.matchMedia(NARROW).matches,
+    () => false,
+  );
+
+/**
+ * Desktop: problem | workspace in resizable panels. Phones (plan §21.5: "best on desktop, still
+ * works"): one at a time behind Problem / Code tabs. Both stay mounted, so the editor keeps its
+ * state when you flip back to read the statement.
+ */
+function RoomLayout({ problem, workspace }: { problem: React.ReactNode; workspace: React.ReactNode }) {
+  const narrow = useNarrow();
+  const [view, setView] = useState<'problem' | 'code'>('problem');
+  const [hint, setHint] = useState(true);
+  if (!narrow) {
+    return (
+      <Group orientation="horizontal" className="min-h-0 flex-1">
+        <Panel defaultSize="38%" minSize="20%">
+          {problem}
+        </Panel>
+        <Separator className="w-1.5 bg-border transition-colors hover:bg-primary/50" />
+        <Panel minSize="30%">{workspace}</Panel>
+      </Group>
+    );
+  }
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      {hint && (
+        <div
+          className="flex items-center gap-2 border-b border-border bg-muted px-3 py-1.5 text-xs"
+          role="note"
+        >
+          <span className="flex-1">Battles are best on a bigger screen, but everything works here.</span>
+          <button type="button" className="rounded px-1 font-medium" onClick={() => setHint(false)}>
+            Got it
+          </button>
+        </div>
+      )}
+      <div
+        className="grid grid-cols-2 border-b border-border text-sm"
+        role="tablist"
+        aria-label="Battle view"
+      >
+        {(['problem', 'code'] as const).map((v) => (
+          <button
+            key={v}
+            type="button"
+            role="tab"
+            aria-selected={view === v}
+            className={cn(
+              'py-2 font-medium capitalize text-muted-foreground',
+              view === v && 'border-b-2 border-primary text-foreground',
+            )}
+            onClick={() => setView(v)}
+          >
+            {v}
+          </button>
+        ))}
+      </div>
+      <div className={cn('min-h-0 flex-1 overflow-auto', view !== 'problem' && 'hidden')}>{problem}</div>
+      <div className={cn('min-h-0 flex-1', view !== 'code' && 'hidden')}>{workspace}</div>
     </div>
   );
 }
@@ -256,12 +326,12 @@ function Overlay({ children }: { children: React.ReactNode }) {
   return (
     <div
       ref={ref}
-      className="absolute inset-0 z-40 grid place-items-center bg-background/80 p-4 backdrop-blur-sm"
+      className="absolute inset-0 z-40 grid animate-in place-items-center bg-background/80 p-4 backdrop-blur-sm"
     >
       <div
         role="dialog"
         aria-modal="true"
-        className="grid max-w-md gap-4 rounded-xl border border-border bg-card p-6 text-center shadow-xl"
+        className="grid max-w-md animate-pop gap-4 rounded-xl border border-border bg-card p-6 text-center shadow-xl"
       >
         {children}
       </div>
@@ -484,7 +554,7 @@ function Workspace({
     <Group orientation="vertical" className="h-full">
       <Panel defaultSize="68%" minSize="25%">
         <div className="flex h-full flex-col">
-          <div className="flex items-center gap-2 border-b border-border px-3 py-2">
+          <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
             <label htmlFor="language" className="sr-only">
               Language
             </label>
@@ -496,7 +566,7 @@ function Workspace({
                 setLang(l);
                 void saveLanguage(matchId, l);
               }}
-              className="h-8 w-40 py-0"
+              className="h-8 w-32 py-0 sm:w-40"
             >
               {LANGUAGE_KEYS.map((l) => (
                 <option key={l} value={l}>
@@ -672,10 +742,32 @@ function ResultView({ sub, pending }: { sub: SubmissionView | undefined; pending
 
 // ---------------- the end (plan §21.5) ----------------
 
-/** The real coin change (after the floor at 0), from the ledger once rating-service applied it. */
+/** Counts from 0 to `to` (eased), or jumps straight there when the user prefers reduced motion. */
+function useCountUp(to: number, ms = 900): number {
+  const [v, setV] = useState(0);
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return setV(to);
+    const t0 = performance.now();
+    let raf = 0;
+    const tick = (now: number) => {
+      const p = Math.min(1, (now - t0) / ms);
+      setV(Math.round(to * (1 - (1 - p) ** 3)));
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [to, ms]);
+  return v;
+}
+
+/**
+ * The real coin change (after the floor at 0), from the ledger once rating-service applied it,
+ * counted up, with a level-up badge when the match crossed a level boundary.
+ */
 function CoinChange({ matchId }: { matchId: string }) {
   const coins = useMatchCoins(matchId, true);
   const c = coins.data;
+  const shown = useCountUp(c?.applied ?? 0);
   if (!c) {
     return (
       <p className="text-sm text-muted-foreground" aria-live="polite">
@@ -683,20 +775,42 @@ function CoinChange({ matchId }: { matchId: string }) {
       </p>
     );
   }
+  const before = levelFor(c.balance - c.applied);
+  const after = levelFor(c.balance);
   return (
-    <p className="text-lg font-semibold tabular-nums" aria-live="polite" data-testid="coin-change">
-      <span
-        className={cn(
-          c.applied > 0 ? 'text-success' : c.applied < 0 ? 'text-destructive' : 'text-muted-foreground',
+    <div className="grid justify-items-center gap-2" aria-live="polite">
+      <p className="animate-rise text-lg font-semibold tabular-nums" data-testid="coin-change">
+        {/* screen readers get the final value, not every frame */}
+        <span className="sr-only">
+          {signed(c.applied)} coins, now {c.balance}
+        </span>
+        <span
+          aria-hidden
+          className={cn(
+            c.applied > 0 ? 'text-success' : c.applied < 0 ? 'text-destructive' : 'text-muted-foreground',
+          )}
+        >
+          {signed(shown)} coins
+        </span>
+        <span aria-hidden className="text-sm font-normal text-muted-foreground">
+          {' '}
+          · now {c.balance - c.applied + shown}
+        </span>
+        {c.applied !== c.delta && (
+          <span className="block text-xs font-normal text-muted-foreground">Coins can’t go below 0.</span>
         )}
-      >
-        {signed(c.applied)} coins
-      </span>
-      <span className="text-sm font-normal text-muted-foreground"> · now {c.balance}</span>
-      {c.applied !== c.delta && (
-        <span className="block text-xs font-normal text-muted-foreground">Coins can’t go below 0.</span>
+      </p>
+      {after !== before && (
+        <span className="inline-block animate-pop">
+          <Badge
+            variant={after > before ? 'warning' : 'secondary'}
+            className={cn('text-sm', after > before && 'animate-glow')}
+          >
+            {after > before ? `Level up! Level ${after}` : `Level ${after}`}
+          </Badge>
+        </span>
       )}
-    </p>
+    </div>
   );
 }
 

@@ -85,6 +85,40 @@
   --font-mono: ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, Consolas, monospace;
 }
 
+/*
+ * Motion (plan §21.5). CSS only: no animation library in the bundle. `prefers-reduced-motion`
+ * collapses all of them (base layer below). Use as `animate-in`, `animate-pop`, `animate-rise`.
+ */
+@theme {
+  --animate-in: cb-in 160ms ease-out both;
+  --animate-pop: cb-pop 260ms cubic-bezier(0.2, 0.9, 0.3, 1.25) both;
+  --animate-rise: cb-rise 220ms ease-out both;
+  --animate-glow: cb-glow 1.6s ease-in-out 2;
+}
+
+@keyframes cb-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes cb-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+}
+@keyframes cb-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@keyframes cb-glow {
+  50% {
+    box-shadow: 0 0 0 6px color-mix(in oklch, var(--warning) 35%, transparent);
+  }
+}
+
 @layer base {
   * {
     border-color: var(--border);

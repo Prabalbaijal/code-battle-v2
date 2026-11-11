@@ -63,6 +63,15 @@ function RealtimeBridge() {
       .catch(() => undefined);
   }, [status]);
 
+  // plan §21.4: the moment a match is being prepared, fetch the battle route and the editor chunk,
+  // so the room opens instantly on `match:started`
+  const preparing = useLive((s) => s.preparing?.matchId);
+  useEffect(() => {
+    if (!preparing) return;
+    router.prefetch(`/battle/${preparing}`);
+    void import('./code-editor');
+  }, [preparing, router]);
+
   useRealtimeEvent('presence:snapshot', (m) => liveStore.set({ friends: m.data.friends }));
   useRealtimeEvent('presence:update', (m) => setFriendStatus(m.data.userId, m.data.status));
   useRealtimeEvent('challenge:received', (m) =>
@@ -212,12 +221,12 @@ function IncomingChallenge() {
   }
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-background/70 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 grid animate-in place-items-center bg-background/70 p-4 backdrop-blur-sm">
       <div
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="challenge-title"
-        className="grid w-full max-w-sm gap-4 rounded-xl border border-border bg-card p-6 shadow-xl"
+        className="grid w-full max-w-sm animate-pop gap-4 rounded-xl border border-border bg-card p-6 shadow-xl"
       >
         <div className="flex items-center gap-3">
           <UserAvatar name={current.from.fullname} size="md" />

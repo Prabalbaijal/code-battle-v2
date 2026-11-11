@@ -61,7 +61,7 @@ export function NotificationBell() {
           id={panelId}
           role="dialog"
           aria-label="Notifications"
-          className="absolute right-0 top-11 z-50 w-[min(22rem,calc(100vw-2rem))] rounded-lg border border-border bg-card p-2 shadow-xl"
+          className="absolute right-0 top-11 z-50 w-[min(22rem,calc(100vw-2rem))] animate-rise rounded-lg border border-border bg-card p-2 shadow-xl"
         >
           <div className="flex items-center justify-between px-2 pb-2">
             <span className="text-sm font-semibold">Notifications</span>

@@ -1,10 +1,10 @@
 'use client';
 
 import type { LedgerEntry } from '@cb/contracts';
-import { useId, useMemo, useState, type KeyboardEvent } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { LEDGER_LABELS, signed } from '@/lib/rating';
 
-const W = 640;
+/** Drawn at the container's real width (1 unit = 1 px), so labels stay 11 px on a phone. */
 const H = 200;
 const PAD = { top: 12, right: 12, bottom: 24, left: 44 };
 
@@ -30,6 +30,15 @@ const fmtDate = (iso: string) =>
 export function CoinChart({ entries }: { entries: LedgerEntry[] }) {
   const id = useId();
   const [active, setActive] = useState<number | null>(null);
+  const box = useRef<HTMLDivElement>(null);
+  const [W, setW] = useState(640);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setW(Math.max(280, Math.round(e!.contentRect.width))));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const geo = useMemo(() => {
     const values = entries.map((e) => e.balanceAfter);
@@ -42,7 +51,7 @@ export function CoinChart({ entries }: { entries: LedgerEntry[] }) {
     const y = (v: number) => PAD.top + ih - ((v - lo) / (hi - lo || 1)) * ih;
     const points = entries.map((e, i) => ({ x: x(i), y: y(e.balanceAfter), e }));
     return { grid: g, y, points, step: entries.length > 1 ? iw / (entries.length - 1) : iw };
-  }, [entries]);
+  }, [entries, W]);
 
   const onKey = (e: KeyboardEvent) => {
     if (!entries.length) return;
@@ -73,11 +82,11 @@ export function CoinChart({ entries }: { entries: LedgerEntry[] }) {
   const tipLeft = p ? Math.min(Math.max((p.x / W) * 100, 12), 88) : 0;
 
   return (
-    <div className="grid gap-2">
-      <div className="relative">
+    <div className="grid min-w-0 gap-2">
+      <div className="relative w-full min-w-0" ref={box}>
         <svg
           viewBox={`0 0 ${W} ${H}`}
-          className="h-auto w-full touch-none select-none outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          className="block h-auto w-full max-w-full touch-none select-none overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-primary"
           role="img"
           aria-labelledby={`${id}-desc`}
           tabIndex={0}
@@ -104,16 +113,16 @@ export function CoinChart({ entries }: { entries: LedgerEntry[] }) {
                 x={PAD.left - 8}
                 y={geo.y(v) + 4}
                 textAnchor="end"
-                className="fill-muted-foreground text-[9px] tabular-nums"
+                className="fill-muted-foreground text-[11px] tabular-nums"
               >
                 {v}
               </text>
             </g>
           ))}
-          <text x={PAD.left} y={H - 6} className="fill-muted-foreground text-[9px]">
+          <text x={PAD.left} y={H - 6} className="fill-muted-foreground text-[11px]">
             {fmtDate(entries[0]!.createdAt)}
           </text>
-          <text x={W - PAD.right} y={H - 6} textAnchor="end" className="fill-muted-foreground text-[9px]">
+          <text x={W - PAD.right} y={H - 6} textAnchor="end" className="fill-muted-foreground text-[11px]">
             {fmtDate(entries.at(-1)!.createdAt)}
           </text>
 
@@ -146,9 +155,9 @@ export function CoinChart({ entries }: { entries: LedgerEntry[] }) {
           {geo.points.map((pt, i) => (
             <rect
               key={pt.e.id}
-              x={pt.x - geo.step / 2}
+              x={Math.max(0, pt.x - geo.step / 2)}
               y={0}
-              width={Math.max(geo.step, 8)}
+              width={Math.max(0, Math.min(W, pt.x + geo.step / 2) - Math.max(0, pt.x - geo.step / 2))}
               height={H}
               fill="transparent"
               onMouseEnter={() => setActive(i)}

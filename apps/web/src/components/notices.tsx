@@ -36,7 +36,10 @@ export function Notices() {
       aria-live="polite"
     >
       {list.map((n) => (
-        <div key={n.id} className="rounded-lg border border-border bg-card px-4 py-3 text-sm shadow-lg">
+        <div
+          key={n.id}
+          className="animate-rise rounded-lg border border-border bg-card px-4 py-3 text-sm shadow-lg"
+        >
           {n.text}
         </div>
       ))}
