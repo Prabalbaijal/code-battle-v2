@@ -13,6 +13,7 @@ import { TEMPLATES } from '@/components/code-editor';
 import { Markdown } from '@/components/markdown';
 import { isApiError, messageFor } from '@/lib/api';
 import { tabLease, useForfeit, useMatchState, useProblem, useSubmission, useSubmit } from '@/lib/battle';
+import { signed, useMatchCoins } from '@/lib/rating';
 import { loadDraft, loadLanguage, saveDraft, saveLanguage } from '@/lib/drafts';
 import { useRealtimeEvent, useRealtimeStatus } from '@/lib/realtime';
 import { useMe, useRequireAuth } from '@/lib/session';
@@ -652,6 +653,34 @@ function ResultView({ sub, pending }: { sub: SubmissionView | undefined; pending
 
 // ---------------- the end (plan §21.5) ----------------
 
+/** The real coin change (after the floor at 0), from the ledger once rating-service applied it. */
+function CoinChange({ matchId }: { matchId: string }) {
+  const coins = useMatchCoins(matchId, true);
+  const c = coins.data;
+  if (!c) {
+    return (
+      <p className="text-sm text-muted-foreground" aria-live="polite">
+        {coins.isError ? 'Coins will update shortly.' : 'Updating coins…'}
+      </p>
+    );
+  }
+  return (
+    <p className="text-lg font-semibold tabular-nums" aria-live="polite" data-testid="coin-change">
+      <span
+        className={cn(
+          c.applied > 0 ? 'text-success' : c.applied < 0 ? 'text-destructive' : 'text-muted-foreground',
+        )}
+      >
+        {signed(c.applied)} coins
+      </span>
+      <span className="text-sm font-normal text-muted-foreground"> · now {c.balance}</span>
+      {c.applied !== c.delta && (
+        <span className="block text-xs font-normal text-muted-foreground">Coins can’t go below 0.</span>
+      )}
+    </p>
+  );
+}
+
 function EndScreen({ state: s, meId }: { state: MatchState; meId: string }) {
   const won = s.winnerId === meId;
   const title =
@@ -673,6 +702,7 @@ function EndScreen({ state: s, meId }: { state: MatchState; meId: string }) {
       {won && <Trophy className="mx-auto size-12 text-warning" aria-hidden />}
       <h2 className="text-2xl font-bold">{title}</h2>
       <p className="text-muted-foreground">{reason}</p>
+      {s.status === 'completed' && <CoinChange matchId={s.matchId} />}
       <div className="flex justify-center gap-2">
         <Button asChild>
           <Link href="/lobby">Back to the lobby</Link>

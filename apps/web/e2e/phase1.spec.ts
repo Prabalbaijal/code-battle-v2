@@ -58,7 +58,7 @@ const cookie = async (ctx: BrowserContext, name: string) =>
   (await ctx.cookies()).find((c) => c.name === name);
 
 test('Phase 1 DoD: register, verify, friends, refresh, logout', async ({ browser }) => {
-  test.setTimeout(120_000); // a long two-user journey
+  test.setTimeout(180_000); // a long two-user journey through the whole stack
   const alice = player('alice');
   const bob = player('bob');
   const ca = await browser.newContext();

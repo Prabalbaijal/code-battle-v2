@@ -2,6 +2,7 @@
 
 import { Button, cn, Skeleton, UserAvatar } from '@cb/ui';
 import { LogOut, Swords } from 'lucide-react';
+import { NotificationBell } from './notification-bell';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { isAdmin } from '@/lib/judge';
@@ -12,6 +13,8 @@ const NAV = [
   { href: '/lobby', label: 'Lobby' },
   { href: '/friends', label: 'Friends' },
 ];
+/** Public: signed-out visitors can browse the leaderboard. */
+const PUBLIC_NAV = [{ href: '/leaderboard', label: 'Leaderboard' }];
 const AUTHOR_NAV = [{ href: '/admin/problems', label: 'Problems' }];
 const ADMIN_NAV = [{ href: '/admin/judge', label: 'Judge' }];
 
@@ -29,9 +32,14 @@ export function SiteHeader() {
           Code Battle
         </Link>
 
-        {me && (
-          <nav aria-label="Main" className="flex items-center gap-1 text-sm">
-            {[...NAV, ...(canAuthor(me) ? AUTHOR_NAV : []), ...(isAdmin(me) ? ADMIN_NAV : [])].map((n) => (
+        {!isPending && (
+          <nav aria-label="Main" className="flex items-center gap-1 overflow-x-auto text-sm">
+            {[
+              ...(me ? NAV : []),
+              ...PUBLIC_NAV,
+              ...(me && canAuthor(me) ? AUTHOR_NAV : []),
+              ...(me && isAdmin(me) ? ADMIN_NAV : []),
+            ].map((n) => (
               <Link
                 key={n.href}
                 href={n.href}
@@ -52,6 +60,7 @@ export function SiteHeader() {
             <Skeleton className="h-8 w-24" />
           ) : me ? (
             <>
+              <NotificationBell />
               <Link
                 href={`/u/${me.username}`}
                 className="flex items-center gap-2 rounded-md px-2 py-1 text-sm hover:bg-muted"

@@ -8,15 +8,17 @@ import type { FastifyReply } from 'fastify';
  * Per-route limits inside identity (defence in depth; the gateway has its own coarse limits).
  * Plan §16: login 5/min per IP+account and 20/min per IP. Redis-backed with in-memory fallback.
  */
-export function createAuthRateLimits(redis: SafeRedis, logger: Logger) {
-  const per = (prefix: string, capacity: number, windowSec: number) =>
-    new RateLimiter({
+export function createAuthRateLimits(redis: SafeRedis, logger: Logger, scale = 1) {
+  const per = (prefix: string, limit: number, windowSec: number) => {
+    const capacity = limit * scale;
+    return new RateLimiter({
       redis,
       logger,
       prefix: `identity:${prefix}`,
       capacity,
       refillPerSec: capacity / windowSec,
     });
+  };
   return {
     loginIp: per('login-ip', 20, 60),
     loginAccount: per('login-acct', 5, 60),

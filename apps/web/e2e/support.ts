@@ -59,7 +59,8 @@ export async function startMatch(a: Player, b: Player) {
   for (const p of [a, b]) await expect(p.page.getByText(/\d+ online/)).toBeVisible({ timeout: 20_000 });
   await a.page.getByLabel('Search online players by username').fill(b.username);
   const row = a.page.getByRole('listitem').filter({ hasText: b.username });
-  await row.getByRole('button', { name: 'Challenge' }).click();
+  // a friend shows up twice (online friends + search results): either button challenges them
+  await row.getByRole('button', { name: 'Challenge' }).first().click();
 
   const dialog = b.page.getByRole('alertdialog');
   await expect(dialog).toContainText(`${a.username} challenges you`, { timeout: 15_000 });
