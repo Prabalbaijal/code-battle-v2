@@ -27,6 +27,7 @@ export async function buildApp(infra: Infra): Promise<HttpServer> {
     // runs after `authenticate`, so the key is scoped to the verified user
     idem: createIdempotency({ db: infra.db.db, getOwner: (req) => authUser(req).userId }),
     requestLimiter: infra.limits.friendRequests,
+    ...(infra.internalAuth ? { internalAuth: infra.internalAuth } : {}),
   });
 
   infra.relay.start();

@@ -1,6 +1,7 @@
 import { signInternalToken } from '@cb/auth';
 import {
   capacitySchema,
+  presenceQueryResultSchema,
   profileSchema,
   selectionResultSchema,
   type Capacity,
@@ -152,5 +153,36 @@ export class HttpUserDirectory implements UserDirectory {
   }
 }
 
-/** Until realtime presence exists (Phase 3 part B), everyone counts as online. */
+/** For tests and for running without realtime: everyone counts as online. */
 export const everyoneOnline: PresenceSource = { isOnline: async () => true };
+
+/**
+ * realtime's presence (plan §11.1). Fails open: if realtime can't answer, the challenge goes out
+ * anyway (it expires in 30 s if nobody is there) rather than blocking every challenge.
+ */
+export class HttpPresence implements PresenceSource {
+  private readonly c: InternalHttp;
+  constructor(
+    o: { baseUrl: string; secret: string; service: string },
+    private readonly logger?: { warn: (o: object, m: string) => void },
+  ) {
+    this.c = new InternalHttp('realtime-service', o.baseUrl, o.secret, o.service, 1000);
+  }
+
+  async isOnline(userId: string): Promise<boolean> {
+    try {
+      const r = await this.c.http.request({
+        method: 'POST',
+        path: '/internal/presence/query',
+        body: { userIds: [userId] },
+        headers: await this.c.auth(),
+        schema: presenceQueryResultSchema,
+        retry: true,
+      });
+      return r.data.statuses[userId] !== 'offline';
+    } catch (err) {
+      this.logger?.warn({ err }, 'presence unavailable; letting the challenge through');
+      return true;
+    }
+  }
+}

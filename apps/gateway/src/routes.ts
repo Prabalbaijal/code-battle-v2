@@ -11,7 +11,7 @@ import type { Env } from './config/env.js';
  */
 export type Access = 'public' | 'optional' | 'user' | 'verified' | Role;
 
-export type ServiceName = 'identity' | 'user' | 'problem' | 'judge' | 'battle';
+export type ServiceName = 'identity' | 'user' | 'problem' | 'judge' | 'battle' | 'realtime';
 
 export interface RouteRule {
   prefix: string;
@@ -36,6 +36,8 @@ export const ROUTES: RouteRule[] = [
   // battle-service checks a verified email itself where it matters (challenge, accept)
   { prefix: '/api/v1/challenges', service: 'battle', access: 'user' },
   { prefix: '/api/v1/matches', service: 'battle', access: 'user' },
+  // lobby lists and online dots; the socket itself goes straight to realtime (Caddy in production)
+  { prefix: '/api/v1/presence', service: 'realtime', access: 'user' },
   // Judge0 callbacks: no user token; each URL carries an HMAC signature checked by judge-service
   { prefix: '/api/v1/hooks/judge0', service: 'judge', access: 'public' },
 ];
@@ -46,6 +48,7 @@ export const serviceUrls = (env: Env): Record<ServiceName, string> => ({
   problem: env.SERVICE_URL_PROBLEM,
   judge: env.SERVICE_URL_JUDGE,
   battle: env.SERVICE_URL_BATTLE,
+  realtime: env.SERVICE_URL_REALTIME,
 });
 
 /** Headers only the gateway may set. Anything a client sends with these names is dropped. */

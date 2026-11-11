@@ -113,6 +113,11 @@ export class FriendsService {
     this.d.afterCommit?.();
   }
 
+  /** For realtime's presence fan-out (internal). */
+  friendIds(userId: string): Promise<string[]> {
+    return repo.friendIds(this.d.db, userId.toLowerCase(), 1000);
+  }
+
   list(me: string, kind: 'friends' | 'incoming' | 'outgoing', cursor: string | undefined, limit: number) {
     return this.page(me, kind, cursor, limit);
   }
