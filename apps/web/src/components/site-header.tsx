@@ -8,7 +8,10 @@ import { isAdmin } from '@/lib/judge';
 import { canAuthor } from '@/lib/problems';
 import { useLogout, useMe } from '@/lib/session';
 
-const NAV = [{ href: '/friends', label: 'Friends' }];
+const NAV = [
+  { href: '/lobby', label: 'Lobby' },
+  { href: '/friends', label: 'Friends' },
+];
 const AUTHOR_NAV = [{ href: '/admin/problems', label: 'Problems' }];
 const ADMIN_NAV = [{ href: '/admin/judge', label: 'Judge' }];
 
