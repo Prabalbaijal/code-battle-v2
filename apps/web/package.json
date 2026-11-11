@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@cb/contracts": "workspace:*",
+    "@cb/scoring": "workspace:*",
     "@cb/ui": "workspace:*",
     "@codemirror/autocomplete": "6.20.4",
     "@codemirror/lang-cpp": "6.0.3",

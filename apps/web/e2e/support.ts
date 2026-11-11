@@ -1,4 +1,4 @@
-import { expect, type Browser, type Page } from '@playwright/test';
+import { expect, type Browser, type BrowserContextOptions, type Page } from '@playwright/test';
 
 /** Shared helpers for the battle specs (real stack, fake-judge0). */
 const WEB = process.env.WEB_URL ?? 'http://localhost:3000';
@@ -13,7 +13,12 @@ export interface Player {
 }
 
 /** Register and verify through the API (the UI flow is covered in phase1.spec), then log in. */
-export async function player(browser: Browser, name: string): Promise<Player> {
+export async function player(
+  browser: Browser,
+  name: string,
+  /** e.g. a phone viewport for the mobile specs */
+  context: BrowserContextOptions = {},
+): Promise<Player> {
   const username = `${name}_${run}`;
   const email = `${username}@e2e.test`;
   const headers = {
@@ -42,7 +47,7 @@ export async function player(browser: Browser, name: string): Promise<Player> {
   });
   expect(v.ok).toBe(true);
 
-  const page = await (await browser.newContext()).newPage();
+  const page = await (await browser.newContext(context)).newPage();
   await page.goto('/login');
   await page.getByLabel('Username or email').fill(username);
   await page.getByLabel('Password').fill(PASSWORD);

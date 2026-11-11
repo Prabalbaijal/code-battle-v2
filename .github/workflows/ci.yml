@@ -29,6 +29,8 @@ jobs:
       - run: pnpm lint
       - run: pnpm check-types
       - run: pnpm test
+      # the UI kit's stories must keep compiling (plan §21.5)
+      - run: pnpm --filter @cb/ui build-storybook
       # plan §21.4: First Load JS per route, measured from the real HTML of a production build
       - name: Web bundle budgets
         run: |

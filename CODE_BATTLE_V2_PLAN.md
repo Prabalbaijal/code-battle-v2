@@ -1848,7 +1848,7 @@ Script: `scripts/migrate-v1/` (TS). It is **idempotent** (upserts on `legacy_mon
 
 ### Phase 5: Frontend polish and performance (frontend track B)
 
-- [ ] Bundle and performance budgets in CI, Lighthouse CI, virtualised lists, prefetching, animations, accessibility audit, mobile responsiveness, Storybook coverage for `packages/ui`, Playwright visual snapshots.
+- [x] Bundle and performance budgets in CI, Lighthouse CI, virtualised lists, prefetching, animations, accessibility audit, mobile responsiveness, Storybook coverage for `packages/ui`, Playwright visual snapshots. _(5A + 5B. Lighthouse CI → Web Vitals measured in Playwright; virtualised lists not added: every list is cursor-paginated at ≤ 50 rows, which renders in a few ms, and virtualisation would cost bundle size and screen-reader behaviour for nothing. See the decision log.)_
 
 **DoD:**
 
@@ -1974,7 +1974,7 @@ Checked on **2026-11-08**. Re-check these before decisions that depend on them:
 | 2 Problems + Judge                     | ✅ Done | PRs #6–#11 merged.                              |
 | 3 Battle + Realtime                    | ✅ Done | PRs #12–#14 merged; DoD on `phase-3/finish`.    |
 | 4 Rating / Leaderboard / Notifications | ✅ Done | PRs #16–#17 merged; web + DoD on `phase-4/web`. |
-| 5 Frontend polish                      | ⬜      |                                                 |
+| 5 Frontend polish                      | ✅ Done | PR #19 merged; polish on `phase-5/polish`.      |
 | 6 Hardening                            | ⬜      |                                                 |
 | 7 AI                                   | ⬜      |                                                 |
 | 8 Migration + Cutover                  | ⬜      |                                                 |
@@ -2089,6 +2089,17 @@ It found three bugs that fake-judge0 couldn't show, all fixed with regression te
 - **Accessibility:** `e2e/a11y.spec.ts` runs axe (WCAG 2.1 A/AA) on every page, signed out and in, the notification panel, the battle room, the end screen and a profile with history, in dark and light. **No serious or critical issues.** Fixed: light-mode status colours on their own tints (4.28 → ≥ 4.5:1), the editor's content area is named and an explicit tab stop, editor line numbers lifted to AA.
 - **Web Vitals:** `e2e/vitals.spec.ts` measures LCP, CLS and INP with the browser's PerformanceObservers on a throttled phone (4× CPU, 150 ms RTT, 1.6 Mbps); every page passes (LCP 0.4–1.1 s, CLS ≤ 0.001, INP ≤ 136 ms). Fixed on the way: the profile is server-rendered from the BFF with the visitor's cookie (`lib/server-api.ts`; LCP 9.4 s → 0.6 s) and `/notifications` fetches in parallel with the session check (4.0 → 1.0 s). Lighthouse CI was not added: the same metrics come from the browser the E2E suite already drives.
 
+**Phase 5 progress (part B, branch `phase-5/polish`, 2026-11-12):**
+
+- **Motion** (CSS only, no animation library): modals pop in, toasts and the notification panel rise, the end screen counts the coin change up and shows a "Level up!" badge when the match crossed a level boundary. `prefers-reduced-motion` collapses all of it (and the count-up jumps straight to the value).
+- **Prefetch:** the moment a match is being prepared (`challenge:updated` accepted, or your own Accept), the battle route and the editor chunk are fetched, so the room opens at once on `match:started`.
+- **Profile:** a wins/losses/draws donut on every profile (legend with counts and shares; hover or focus a part) and, on your own, a 12-week activity heatmap from the ledger (sequential single hue; screen readers get the summary and the active days). The coin chart now draws at its container's real width, so its labels stay 11 px on a phone.
+- **Phones:** the header collapses to the logo icon and compact links; the battle room switches to Problem / Code tabs (both stay mounted, so the editor keeps its state) with a "best on a bigger screen" note. `e2e/mobile.spec.ts` fails if any element on any page sticks out past a 412 px viewport, and plays a match on a phone.
+- **Storybook** for `packages/ui` (Vite builder, Tailwind plugin): buttons, badges, alerts, forms, cards, tabs, avatars, loading states. `build-storybook` runs in CI.
+- **Visual snapshots** (`e2e/visual.spec.ts`): every story plus the landing and auth pages, dark and light, against baselines in `e2e/visual.spec.ts-snapshots` (taken on the dev machine; fonts differ per platform, so CI doesn't run them).
+
+**Phase 5 DoD results:** performance budgets met on all routes (`check-budgets.mjs` in CI; Web Vitals pass on a throttled phone), and axe reports no serious or critical issues on any page in either colour scheme.
+
 The `battle.match.started.v1` "seen" consumer in problem-service waits for battle-service (Phase 3).
 
 Deferred: an identity admin endpoint to change roles (the `identity.user.role_changed.v1` contract exists); avatar upload UI and profile editing page; Storybook for `packages/ui` (Phase 5); E2E in CI (needs the compose stack in CI, Phase 6). Avatar uploads need `CLOUDINARY_*` env vars from the owner.
@@ -2122,3 +2133,5 @@ Deferred: an identity admin endpoint to change roles (the `identity.user.role_ch
 - 2026-11-12: Phase 3 hardening decisions. Delivery-critical lookups in realtime (who plays a match) are kept in node memory, filled from the event stream itself; Redis is a fallback, so a slow or unavailable Redis no longer drops opponent activity. A new realtime node starts at the latest offset, so clients resync on reconnect (pending challenges, match state) instead of relying on replay.
 - 2026-11-12: Phase 4 decisions. Leaderboard and profile are client-rendered per viewer (rank, friends, relationship) and refreshed by `stats:updated`, not ISR. A new `notification.events` topic (self-hosted Redpanda has no 5-topic budget). rating-service's worker starts new consumer groups from the beginning of the topics. `AUTH_RATE_LIMIT_SCALE` exists for dev/E2E only (must be 1 in production). E2E runs with one Playwright worker.
 - 2026-11-12: Phase 5 budgets. First Load JS ≤ 175 KB on player routes (the plan's 170 assumed a smaller framework; React 19 + Next 16 are ~127 KB alone), ≤ 200 KB on admin editor routes (problem setters, desktop), ≤ 260 KB on the battle room. Web Vitals are measured in Playwright with PerformanceObservers on a throttled phone profile instead of Lighthouse CI. Pages that need data for their first paint (the profile) are server-rendered from the gateway with the visitor's cookie.
+- 2026-11-12: Phase 5 polish. Motion is CSS keyframes in `packages/ui` (no Framer Motion: ~30 KB on every page for a few transitions). Charts are hand-built SVG (no Recharts), following the data-viz rules: one series per chart, labels and legends in text colours, a table or summary for screen readers. No list virtualisation (paginated lists of ≤ 50 rows). On phones the battle room uses tabs instead of resizable panels. Visual snapshot baselines are per platform and live with the E2E suite, which runs on the dev machine.
+- 2026-11-12: New order for the remaining phases (owner's call): Phase 6 hardening → choose the host (Oracle Always Free VM or the laptop + Cloudflare Tunnel) → deploy → Phase 8 migration → Phase 7 AI last. AI is deferred because every LLM call costs money and infra stays ₹0; nothing else depends on it.
