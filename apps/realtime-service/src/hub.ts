@@ -57,6 +57,7 @@ export class Hub {
   private consumer: Consumer | undefined;
   private sweeper: NodeJS.Timeout | undefined;
   private readonly offlineTimers = new Map<string, NodeJS.Timeout>();
+  private readonly matchPlayers = new Map<string, string[]>();
 
   constructor(private readonly d: HubDeps) {
     this.io = new Server(d.httpServer, {
@@ -144,13 +145,22 @@ export class Hub {
   }
 
   private async deliver(del: Delivery): Promise<void> {
-    const ids =
-      'userIds' in del.to
-        ? del.to.userIds
-        : (await this.d.store.matchUsers(del.to.opponentsOf.matchId)).filter(
-            (id) => 'opponentsOf' in del.to && id !== del.to.opponentsOf.userId,
-          );
-    this.emit(ids, del.event, del.message);
+    if ('userIds' in del.to) return this.emit(del.to.userIds, del.event, del.message);
+    const { matchId, userId } = del.to.opponentsOf;
+    const players = await this.playersOf(matchId);
+    this.emit(
+      players.filter((id) => id !== userId),
+      del.event,
+      del.message,
+    );
+  }
+
+  /**
+   * Who plays a match. Every node consumes `match.started`, so memory answers without Redis
+   * (delivery must not depend on it); Redis covers nodes that started after the match did.
+   */
+  private async playersOf(matchId: string): Promise<string[]> {
+    return this.matchPlayers.get(matchId) ?? this.d.store.matchUsers(matchId);
   }
 
   private emit<K extends ServerEventName>(
@@ -167,10 +177,16 @@ export class Hub {
   private async apply(e: SideEffect): Promise<void> {
     switch (e.kind) {
       case 'match-started':
+        this.matchPlayers.set(e.matchId, e.userIds);
+        if (this.matchPlayers.size > 10_000) {
+          // oldest first (Map keeps insertion order); finished matches go anyway
+          this.matchPlayers.delete(this.matchPlayers.keys().next().value!);
+        }
         await this.d.store.setInMatch(e.matchId, e.userIds);
         for (const id of e.userIds) await this.tellFriends(id, 'in_match');
         return;
       case 'match-over': {
+        this.matchPlayers.delete(e.matchId);
         await this.d.store.clearInMatch(e.matchId, e.userIds);
         const statuses = await this.d.store.statuses(e.userIds);
         for (const id of e.userIds) await this.tellFriends(id, statuses[id] ?? 'offline');

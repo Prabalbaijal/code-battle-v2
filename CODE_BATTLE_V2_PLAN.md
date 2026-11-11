@@ -89,28 +89,28 @@ HomePage (+TypingEffect), Login/Register, EmailVerification, ForgotPassword/Rese
 
 Mark these off in Phase 5 and Phase 8. "Δ" marks an intended behaviour change.
 
-- [ ] Register with fullname, username, email, password (+confirm), and an avatar. **Δ:** avatar optional; a default avatar is generated.
-- [ ] Email verification is required before playing. Forgot/reset password by emailed link.
-- [ ] Login, logout, and "get current user".
+- [x] Register with fullname, username, email, password (+confirm), and an avatar. **Δ:** avatar optional; a default avatar is generated.
+- [x] Email verification is required before playing. Forgot/reset password by emailed link.
+- [x] Login, logout, and "get current user".
 - [ ] New users start with **400 coins, level 1**.
-- [ ] Search users by username (top 10 results). **Δ:** cursor pagination.
-- [ ] Friend requests: send, list incoming, accept, reject (`ignored`), remove a friend, list friends.
-- [ ] Lobby shows **online friends** and **other online users**, each with an "in contest" flag. You can challenge any online user. **Δ:** online friends update live; other online players are a **paginated, searchable list** with an online count, refreshed every 15 s instead of a global broadcast (§13.3, ADR-013).
-- [ ] Challenge flow: send → the opponent gets a notification → accept, reject, or cancel by the sender → "room creating" → match starts for both players.
-- [ ] A challenge is refused if the challenger **or the opponent** is already in an active match. **Δ:** v1 only checked the challenger.
-- [ ] A match gives both players the **same problem, unseen by either of them** (not used in any of their previous contests).
-- [ ] Match duration is **30 minutes**. The timer is shown to both players.
-- [ ] Submit code in JS, Python, C++ or Java. It is judged against hidden tests.
-- [ ] **The first accepted solution wins.** Winner gets **+50 coins**, loser gets **−50** (floored at 0).
+- [x] Search users by username (top 10 results). **Δ:** cursor pagination.
+- [x] Friend requests: send, list incoming, accept, reject (`ignored`), remove a friend, list friends.
+- [x] Lobby shows **online friends** and **other online users**, each with an "in contest" flag. You can challenge any online user. **Δ:** online friends update live; other online players are a **paginated, searchable list** with an online count, refreshed every 15 s instead of a global broadcast (§13.3, ADR-013).
+- [x] Challenge flow: send → the opponent gets a notification → accept, reject, or cancel by the sender → "room creating" → match starts for both players.
+- [x] A challenge is refused if the challenger **or the opponent** is already in an active match. **Δ:** v1 only checked the challenger.
+- [x] A match gives both players the **same problem, unseen by either of them** (not used in any of their previous contests).
+- [x] Match duration is **30 minutes**. The timer is shown to both players.
+- [x] Submit code in JS, Python, C++ or Java. It is judged against hidden tests.
+- [ ] **The first accepted solution wins.** _(Winner logic done in Phase 3; coins come with rating-service, Phase 4.)_ Winner gets **+50 coins**, loser gets **−50** (floored at 0).
 - [ ] **Leave/forfeit:** the leaver loses (−50) and the opponent wins (+50).
 - [ ] **Timeout with no winner:** both players get **−50** (floored at 0).
 - [ ] **Level from coins:** `<500 → 1`, `<900 → 2`, `<1000 → 3`, else `4`.
-- [ ] Reconnecting to an active match after a refresh or disconnect restores the problem and the remaining time.
-- [ ] Active contests list (for rejoining).
+- [x] Reconnecting to an active match after a refresh or disconnect restores the problem and the remaining time.
+- [x] Active contests list (for rejoining).
 - [ ] Leaderboard: top 50 (admins excluded), plus your own rank, with online indicators.
 - [ ] Profile: level, coins, match history (opponent, result win/lose/draw, coin delta, date), and a performance graph.
-- [ ] Multi-tab: warn the user when a battle is open in another tab.
-- [ ] Admin only: add a question (title, description, difficulty Easy/Medium/Hard, input/output format, examples with explanation, constraints, tests, per-language time limits). **Δ:** now through a problem-authoring flow with test files and calibration (§14).
+- [x] Multi-tab: warn the user when a battle is open in another tab.
+- [x] Admin only: add a question (title, description, difficulty Easy/Medium/Hard, input/output format, examples with explanation, constraints, tests, per-language time limits). **Δ:** now through a problem-authoring flow with test files and calibration (§14).
 - [ ] Notification panel (friend requests, challenges).
 
 ---
@@ -1966,17 +1966,17 @@ Checked on **2026-11-08**. Re-check these before decisions that depend on them:
 
 ## 29. Progress tracker (update as you go)
 
-| Phase                                  | Status         | Notes / links                                            |
-| -------------------------------------- | -------------- | -------------------------------------------------------- |
-| 0 Foundation                           | ✅ Done        | PR #1 merged 2026-11-10.                                 |
-| 1 Identity / User / Gateway / Web auth | ✅ Done        | PRs #2–#4 merged; web on `phase-1/web` (PR #5).          |
-| 2 Problems + Judge                     | 🟡 In progress | PRs #6–#10 merged; judge ops on `phase-2/judge-ops`.     |
-| 3 Battle + Realtime                    | 🟡 In progress | PRs #12, #13 merged; web battle on `phase-3/web-battle`. |
-| 4 Rating / Leaderboard / Notifications | ⬜             |                                                          |
-| 5 Frontend polish                      | ⬜             |                                                          |
-| 6 Hardening                            | ⬜             |                                                          |
-| 7 AI                                   | ⬜             |                                                          |
-| 8 Migration + Cutover                  | ⬜             |                                                          |
+| Phase                                  | Status         | Notes / links                                        |
+| -------------------------------------- | -------------- | ---------------------------------------------------- |
+| 0 Foundation                           | ✅ Done        | PR #1 merged 2026-11-10.                             |
+| 1 Identity / User / Gateway / Web auth | ✅ Done        | PRs #2–#4 merged; web on `phase-1/web` (PR #5).      |
+| 2 Problems + Judge                     | 🟡 In progress | PRs #6–#10 merged; judge ops on `phase-2/judge-ops`. |
+| 3 Battle + Realtime                    | ✅ Done        | PRs #12–#14 merged; DoD on `phase-3/finish`.         |
+| 4 Rating / Leaderboard / Notifications | ⬜             |                                                      |
+| 5 Frontend polish                      | ⬜             |                                                      |
+| 6 Hardening                            | ⬜             |                                                      |
+| 7 AI                                   | ⬜             |                                                      |
+| 8 Migration + Cutover                  | ⬜             |                                                      |
 
 ### Resume here (Phase 1 complete, 2026-11-11)
 
@@ -2063,7 +2063,14 @@ It found three bugs that fake-judge0 couldn't show, all fixed with regression te
 - `/battle/[matchId]` (client-only): resizable panels (problem | editor | console); CodeMirror 6 (`@uiw/react-codemirror`, VS Code dark theme, v1's snippet completions, loaded with `dynamic()`); per-language starter programs that read `t` and loop the cases (Java's class is `Main` for Judge0); drafts per match and language in IndexedDB (`idb-keyval`); a countdown from the server clock (amber < 5 min, red < 1 min); Run (Ctrl+'), Submit (Ctrl+Enter), custom input, results with the failing file and case, my submissions, opponent activity; forfeit; one tab per match through the lease ("Use here"); end screen (won / lost / draw / aborted with the reason).
 - Playwright `e2e/battle.spec.ts` (two browsers, real stack, fake-judge0): lobby → challenge → accept → room → WA then AC → "You won!" / "You lost", then a second match ending by forfeit. Passes with the phase 1 and admin specs.
 
-**Remaining for Phase 3:** chaos drill 2 (kill a realtime node during a match), a timeout E2E (needs a short `MATCH_DURATION_SECONDS` stack; timeouts are covered by battle-service integration tests), `BroadcastChannel` same-browser tab detection, the "3-2-1" intro, and the parity checklist pass. Coins on the end screen come with rating-service (Phase 4).
+**Phase 3 DoD results (2026-11-12, branch `phase-3/finish`):**
+
+- Race matrix rows: battle-service integration tests (50 parallel accepts → one match; A→B/B→A; accept after expiry; out-of-order ACs; deciding; timeout vs AC; Kafka redelivery; two reconcilers via the advisory-lock leader).
+- E2E in Chrome, two browsers, real stack: AC win and forfeit (`battle.spec.ts`), one tab per match with "Use here" and instant `BroadcastChannel` notice (`battle-extra.spec.ts`), timeout → draw for both (`E2E_SHORT_MATCH=1` with `MATCH_DURATION_SECONDS=60`).
+- Chaos drill 2 (`chaos.spec.ts`, `E2E_REALTIME_RESTART`): the realtime node is killed and restarted mid-match; browsers reconnect with new tickets, opponent activity resumes, and both players see the result.
+- Parity checklist: challenge and match items ticked; coin rules wait for Phase 4.
+- Fixes found by these runs: opponent activity no longer depends on Redis (each node keeps match players in memory from `match.started`; Redis only for nodes that started later), the web refetches pending challenges on every socket (re)connect, and the battle page resyncs its state after a reconnect or when the tab becomes visible.
+- Also added: the "3-2-1" intro (server clock, decorative only).
 
 The `battle.match.started.v1` "seen" consumer in problem-service waits for battle-service (Phase 3).
 
@@ -2095,3 +2102,4 @@ Deferred: an identity admin endpoint to change roles (the `identity.user.role_ch
 - 2026-11-12: Battle decisions. Timeout without a winner is a draw for both players (`match_participants.result = 'draw'`; rating-service applies the −50 per plan §15). `matches.problem_slug` is stored so the battle page can load the public statement. Judge-event handlers run inside the consumer's inbox transaction, so the verdict they write is visible to the decision in the same transaction.
 - 2026-11-12: Realtime decisions. Presence changes cross nodes through Redis pub/sub (`presence:changes`), not a Kafka topic: the topic budget is 5 and presence is Redis-only anyway; business events still come through Kafka, so challenges and match events reach sockets with Redis down. Friend lists are cached in memory per node and dropped on `user.friendship.changed.v1` (every node consumes every event). The socket URL comes with the ticket: in dev the browser connects to the realtime node directly (Next.js route handlers can't proxy WebSockets); in production Caddy serves `/socket.io` on the site's own origin. battle-service's presence check fails open (a challenge to someone who isn't there just expires).
 - 2026-11-12: Web battle decisions. No Zustand: live UI state (incoming challenges, preparing, friend statuses) is a 30-line store on `useSyncExternalStore`; server state stays in TanStack Query, and socket events invalidate the exact queries they affect. The battle editor and `socket.io-client` load on demand, so non-battle routes don't pay for them. The clock offset is taken from the state snapshot's `serverNow` (no separate ping round trip yet).
+- 2026-11-12: Phase 3 hardening decisions. Delivery-critical lookups in realtime (who plays a match) are kept in node memory, filled from the event stream itself; Redis is a fallback, so a slow or unavailable Redis no longer drops opponent activity. A new realtime node starts at the latest offset, so clients resync on reconnect (pending challenges, match state) instead of relying on replay.

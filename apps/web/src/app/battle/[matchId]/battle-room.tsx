@@ -14,7 +14,7 @@ import { Markdown } from '@/components/markdown';
 import { isApiError, messageFor } from '@/lib/api';
 import { tabLease, useForfeit, useMatchState, useProblem, useSubmission, useSubmit } from '@/lib/battle';
 import { loadDraft, loadLanguage, saveDraft, saveLanguage } from '@/lib/drafts';
-import { useRealtimeEvent } from '@/lib/realtime';
+import { useRealtimeEvent, useRealtimeStatus } from '@/lib/realtime';
 import { useMe, useRequireAuth } from '@/lib/session';
 
 // The editor is the heaviest piece; it loads on the battle page only, client-side.
@@ -83,11 +83,14 @@ function Timer({ ms }: { ms: number | null }) {
 function useTabLease(matchId: string, active: boolean) {
   const tabId = useRef(typeof crypto !== 'undefined' ? crypto.randomUUID() : 'tab-fallback-0');
   const [blocked, setBlocked] = useState(false);
+  const channel = useRef<BroadcastChannel | null>(null);
   const acquire = useCallback(
     async (takeover = false) => {
       try {
         const r = await tabLease(matchId, tabId.current, takeover);
         setBlocked(!r.granted);
+        // tell this browser's other tabs at once, instead of at their next renewal
+        if (r.granted) channel.current?.postMessage({ holder: tabId.current });
       } catch {
         /* lease is a UX guard: on errors, keep the page usable */
       }
@@ -95,12 +98,50 @@ function useTabLease(matchId: string, active: boolean) {
     [matchId],
   );
   useEffect(() => {
+    if (!active || typeof BroadcastChannel === 'undefined') return;
+    const ch = new BroadcastChannel(`battle:${matchId}`);
+    ch.onmessage = (e: MessageEvent<{ holder?: string }>) => {
+      if (e.data?.holder && e.data.holder !== tabId.current) setBlocked(true);
+    };
+    channel.current = ch;
+    return () => {
+      ch.close();
+      channel.current = null;
+    };
+  }, [matchId, active]);
+  useEffect(() => {
     if (!active) return;
     void acquire();
     const t = setInterval(() => void acquire(), 10_000);
     return () => clearInterval(t);
   }, [acquire, active]);
   return { blocked, takeOver: () => acquire(true) };
+}
+
+// ---------------- "3-2-1" (plan §21.5) ----------------
+
+/** Shown only right after the start (server time); decorative, never blocks input. */
+function Intro({ startedAt, offset }: { startedAt: string | null; offset: number }) {
+  const [now, setNow] = useState(() => Date.now());
+  const since = startedAt ? now + offset - new Date(startedAt).getTime() : Infinity;
+  const showing = since > -1000 && since < 3500;
+  useEffect(() => {
+    if (!showing) return;
+    const t = setInterval(() => setNow(Date.now()), 100);
+    return () => clearInterval(t);
+  }, [showing]);
+  if (!showing) return null;
+  const label = since < 1000 ? '3' : since < 2000 ? '2' : since < 3000 ? '1' : 'Go!';
+  return (
+    <div
+      className="pointer-events-none absolute inset-0 z-40 grid place-items-center bg-background/60"
+      aria-live="assertive"
+    >
+      <span key={label} className="text-8xl font-bold text-primary motion-safe:animate-pulse">
+        {label}
+      </span>
+    </div>
+  );
 }
 
 // ---------------- the room ----------------
@@ -116,6 +157,19 @@ export function BattleRoom({ matchId }: { matchId: string }) {
   const lease = useTabLease(matchId, open);
   const opponent = state.data?.players.find((p) => p.id !== me?.id);
   const [activity, setActivity] = useState<string[]>([]);
+
+  // Events sent while the socket was down are gone (a new node reads from the latest offset):
+  // after every reconnect, and when the tab becomes visible again, resync from the server.
+  const socket = useRealtimeStatus();
+  const { refetch } = state;
+  useEffect(() => {
+    if (socket === 'connected') void refetch();
+  }, [socket, refetch]);
+  useEffect(() => {
+    const onVisible = () => document.visibilityState === 'visible' && void refetch();
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [refetch]);
 
   useRealtimeEvent('match:opponent-activity', (m) => {
     if (m.data.matchId !== matchId) return;
@@ -143,6 +197,7 @@ export function BattleRoom({ matchId }: { matchId: string }) {
   return (
     <div className="fixed inset-x-0 bottom-0 top-14 z-30 flex flex-col bg-background">
       <TopBar state={s} meId={me.id} msLeft={msLeft} activity={activity[0]} />
+      {s.status === 'in_progress' && <Intro startedAt={s.startedAt} offset={offset} />}
       {s.status === 'deciding' && (
         <div
           className="border-b border-warning/40 bg-warning/10 px-4 py-1.5 text-center text-sm"
