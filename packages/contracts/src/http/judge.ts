@@ -68,14 +68,47 @@ export const languageInfoSchema = z.object({
 });
 
 /** GET /internal/capacity: battle-service admission control (plan §14.6). */
+/** The degradation ladder (plan §14.6.6), mildest first. */
+export const JUDGE_LEVELS = ['normal', 'no_custom_input', 'runs_throttled', 'no_new_matches'] as const;
+export const judgeLevelSchema = z.enum(JUDGE_LEVELS);
+export type JudgeLevel = z.infer<typeof judgeLevelSchema>;
+
+/** Today's Judge0 budget, counted in Judge0 requests (a batch of files is one request). */
 export const capacitySchema = z.object({
   day: z.string(),
   used: z.number(),
   limit: z.number(),
   remaining: z.number(),
   breaker: z.enum(['closed', 'open', 'half_open']),
+  level: judgeLevelSchema,
 });
 export type Capacity = z.infer<typeof capacitySchema>;
+
+/** Public: what the web shows (a banner when the judge is degraded). No quota numbers. */
+export const judgeStatusSchema = z.object({
+  level: judgeLevelSchema,
+  available: z.boolean(),
+});
+export type JudgeStatus = z.infer<typeof judgeStatusSchema>;
+
+/** Admin view of the judge (plan §14.6, §14.8). */
+export const driftStatusSchema = z.object({
+  /** CPU limits are multiplied by this (1 unless the hosted judge drifted more than 20%). */
+  factor: z.number(),
+  ratio: z.number().nullable(),
+  baseline: z.record(z.string(), z.number()).nullable(),
+  checks: z.number(),
+  lastCheck: z
+    .object({
+      ranAt: z.iso.datetime(),
+      samples: z.record(z.string(), z.number()).nullable(),
+      error: z.string().nullable(),
+    })
+    .nullable(),
+});
+export type DriftStatus = z.infer<typeof driftStatusSchema>;
+export const adminJudgeViewSchema = z.object({ capacity: capacitySchema, drift: driftStatusSchema });
+export type AdminJudgeView = z.infer<typeof adminJudgeViewSchema>;
 
 // ---- internal: calibration runs (problem-service → judge-service, plan §14.7) ----
 

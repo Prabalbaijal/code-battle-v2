@@ -2,7 +2,9 @@ import { authUser } from '@cb/auth';
 import { createHttpServer, type HttpServer } from '@cb/http-server';
 import { createIdempotency } from '@cb/idempotency';
 import type { Infra } from './infra.js';
+import { registerAdminRoutes } from './modules/drift/admin.routes.js';
 import { registerSubmissionRoutes } from './modules/submissions/submissions.routes.js';
+import { QUEUES } from './queues.js';
 
 /** HTTP app: intake, results, languages, Judge0 callbacks, capacity. */
 export async function buildApp(infra: Infra): Promise<HttpServer> {
@@ -27,6 +29,13 @@ export async function buildApp(infra: Infra): Promise<HttpServer> {
     internalAuth: infra.internalAuth,
     limits: infra.limits,
   });
+  registerAdminRoutes(app, {
+    submissions: infra.submissions,
+    drift: infra.drift,
+    driftQueue: infra.queues[QUEUES.drift]!,
+    auth: infra.authHooks,
+  });
+  await infra.drift.load();
   infra.relay.start();
   infra.dispatcher.start();
   return app;

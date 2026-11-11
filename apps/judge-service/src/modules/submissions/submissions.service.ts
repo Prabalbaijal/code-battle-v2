@@ -1,9 +1,18 @@
 import type { AuthUser } from '@cb/auth';
-import { judgeEvents, type Capacity, type CreateSubmissionBody, type SubmissionView } from '@cb/contracts';
+import {
+  judgeEvents,
+  type Capacity,
+  type CreateSubmissionBody,
+  type JudgeSpec,
+  type JudgeStatus,
+  type SubmissionView,
+} from '@cb/contracts';
 import { withTransaction, type Db, type Tx } from '@cb/db';
 import { AppError, badRequest, conflict, notFound } from '@cb/errors';
 import type { OutboxWriter } from '@cb/events';
 import { newId } from '@cb/ids';
+import { degradationLevel, isAtLeast } from '@cb/judge-core';
+import type { RateLimiter } from '@cb/rate-limit';
 import { addJobToOutbox } from '@cb/queue';
 import { createHash } from 'node:crypto';
 import type { JudgeRunRow, SubmissionRow } from '../../db/schema.js';
@@ -20,10 +29,19 @@ export interface SubmissionServiceDeps {
   dailyBudget: number;
   matchReserveCalls: number;
   maxSubmitsPerMatch: number;
+  /** One Run per user per minute once the ladder reaches `runs_throttled`. */
+  throttledRun: RateLimiter;
   afterCommit?: () => void;
 }
 
 /** sha256(language | code with normalised line endings and trailing whitespace) (plan §9.5). */
+/**
+ * Judge0 requests a Submit costs when every stage runs: one batch per stage (sample + small, then
+ * large; plan §14.3). Reruns may overdraw a little; intake keeps the match reserve for that.
+ */
+export const submitRequests = (spec: Pick<JudgeSpec, 'files'>): number =>
+  spec.files.some((f) => f.kind === 'large') && spec.files.some((f) => f.kind !== 'large') ? 2 : 1;
+
 export function codeHash(languageKey: string, code: string): string {
   const normalised = code
     .replace(/\r\n?/g, '\n')
@@ -78,7 +96,19 @@ export class SubmissionService {
 
   async capacity(): Promise<Capacity> {
     const u = await repo.usage(this.d.db, this.d.dailyBudget);
-    return { ...u, remaining: Math.max(0, u.limit - u.used), breaker: this.d.executor.breakerState };
+    const remaining = Math.max(0, u.limit - u.used);
+    return {
+      ...u,
+      remaining,
+      breaker: this.d.executor.breakerState,
+      level: degradationLevel(remaining, u.limit),
+    };
+  }
+
+  /** Public status for the web banner. */
+  async status(): Promise<JudgeStatus> {
+    const cap = await this.capacity();
+    return { level: cap.level, available: cap.breaker !== 'open' && cap.remaining > 0 };
   }
 
   async create(
@@ -115,9 +145,30 @@ export class SubmissionService {
       if (cached) return this.fromCache(user, body, spec.version, hash, cached);
     }
 
-    // Admission: practice can't use the reserve kept for matches; the breaker refuses everything.
     const cap = await this.capacity();
-    const cost = body.mode === 'submit' ? spec.files.length : 1 + (body.customInput !== undefined ? 1 : 0);
+    // The degradation ladder (plan §14.6.6) only ever limits Runs; Submits are what matches need.
+    if (body.mode === 'run') {
+      if (body.customInput !== undefined && isAtLeast(cap.level, 'no_custom_input')) {
+        throw new AppError(
+          'JUDGE_AT_CAPACITY',
+          503,
+          'Custom input is paused while the judge is low on quota. Run the samples instead.',
+          { expose: true, details: { level: cap.level } },
+        );
+      }
+      if (isAtLeast(cap.level, 'runs_throttled')) {
+        const r = await this.d.throttledRun.consume(user.userId);
+        if (!r.allowed) {
+          throw new AppError('RATE_LIMITED', 429, 'One run per minute while the judge is low on quota', {
+            expose: true,
+            details: { level: cap.level, retryAfterMs: r.retryAfterMs },
+          });
+        }
+      }
+    }
+
+    // Admission: practice can't use the reserve kept for matches; the breaker refuses everything.
+    const cost = body.mode === 'submit' ? submitRequests(spec) : 1;
     const floor = matchId ? 0 : this.d.matchReserveCalls;
     if (cap.breaker === 'open' || cap.remaining - cost < floor) {
       throw new AppError('JUDGE_AT_CAPACITY', 503, 'The judge is busy right now. Try again later.', {

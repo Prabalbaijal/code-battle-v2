@@ -42,7 +42,8 @@ export class CalibrationService {
       throw badRequest(`${req.languageKey} is not available on this judge`);
     }
     const cap = await this.d.submissions.capacity();
-    if (cap.breaker === 'open' || cap.remaining - spec.files.length < this.d.matchReserveCalls) {
+    // every file goes in one batch request
+    if (cap.breaker === 'open' || cap.remaining - 1 < this.d.matchReserveCalls) {
       throw new AppError('JUDGE_AT_CAPACITY', 503, 'Not enough judge quota left today to calibrate', {
         expose: true,
       });

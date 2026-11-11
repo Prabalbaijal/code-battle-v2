@@ -4,11 +4,13 @@ import { Button, cn, Skeleton, UserAvatar } from '@cb/ui';
 import { LogOut, Swords } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { isAdmin } from '@/lib/judge';
 import { canAuthor } from '@/lib/problems';
 import { useLogout, useMe } from '@/lib/session';
 
 const NAV = [{ href: '/friends', label: 'Friends' }];
 const AUTHOR_NAV = [{ href: '/admin/problems', label: 'Problems' }];
+const ADMIN_NAV = [{ href: '/admin/judge', label: 'Judge' }];
 
 export function SiteHeader() {
   const { data: me, isPending } = useMe();
@@ -26,7 +28,7 @@ export function SiteHeader() {
 
         {me && (
           <nav aria-label="Main" className="flex items-center gap-1 text-sm">
-            {[...NAV, ...(canAuthor(me) ? AUTHOR_NAV : [])].map((n) => (
+            {[...NAV, ...(canAuthor(me) ? AUTHOR_NAV : []), ...(isAdmin(me) ? ADMIN_NAV : [])].map((n) => (
               <Link
                 key={n.href}
                 href={n.href}

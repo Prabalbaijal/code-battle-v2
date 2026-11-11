@@ -4,6 +4,8 @@ export const QUEUES = {
   submit: 'judge-submit',
   /** Fetch pending results when no callback arrived. jobId = `poll-<submissionId>-<n>`. */
   poll: 'judge-poll',
+  /** Weekly benchmark (plan §14.8), plus manual runs from the admin page. */
+  drift: 'judge-drift',
 } as const;
 
 /** Poll schedule: quick in poll mode, a slow fallback in callback mode; gives up after ~5 min. */
