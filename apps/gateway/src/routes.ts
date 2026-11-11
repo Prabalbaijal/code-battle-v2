@@ -11,7 +11,7 @@ import type { Env } from './config/env.js';
  */
 export type Access = 'public' | 'optional' | 'user' | 'verified' | Role;
 
-export type ServiceName = 'identity' | 'user' | 'problem' | 'judge' | 'battle' | 'realtime';
+export type ServiceName = 'identity' | 'user' | 'problem' | 'judge' | 'battle' | 'rating' | 'realtime';
 
 export interface RouteRule {
   prefix: string;
@@ -36,6 +36,9 @@ export const ROUTES: RouteRule[] = [
   // battle-service checks a verified email itself where it matters (challenge, accept)
   { prefix: '/api/v1/challenges', service: 'battle', access: 'user' },
   { prefix: '/api/v1/matches', service: 'battle', access: 'user' },
+  // leaderboard and stats are public; rating-service reads the token for `me`, friends and the ledger
+  { prefix: '/api/v1/leaderboard', service: 'rating', access: 'optional' },
+  { prefix: '/api/v1/stats', service: 'rating', access: 'optional' },
   // lobby lists and online dots; the socket itself goes straight to realtime (Caddy in production)
   { prefix: '/api/v1/presence', service: 'realtime', access: 'user' },
   // Judge0 callbacks: no user token; each URL carries an HMAC signature checked by judge-service
@@ -48,6 +51,7 @@ export const serviceUrls = (env: Env): Record<ServiceName, string> => ({
   problem: env.SERVICE_URL_PROBLEM,
   judge: env.SERVICE_URL_JUDGE,
   battle: env.SERVICE_URL_BATTLE,
+  rating: env.SERVICE_URL_RATING,
   realtime: env.SERVICE_URL_REALTIME,
 });
 

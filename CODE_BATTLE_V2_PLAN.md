@@ -92,7 +92,7 @@ Mark these off in Phase 5 and Phase 8. "Δ" marks an intended behaviour change.
 - [x] Register with fullname, username, email, password (+confirm), and an avatar. **Δ:** avatar optional; a default avatar is generated.
 - [x] Email verification is required before playing. Forgot/reset password by emailed link.
 - [x] Login, logout, and "get current user".
-- [ ] New users start with **400 coins, level 1**.
+- [x] New users start with **400 coins, level 1**.
 - [x] Search users by username (top 10 results). **Δ:** cursor pagination.
 - [x] Friend requests: send, list incoming, accept, reject (`ignored`), remove a friend, list friends.
 - [x] Lobby shows **online friends** and **other online users**, each with an "in contest" flag. You can challenge any online user. **Δ:** online friends update live; other online players are a **paginated, searchable list** with an online count, refreshed every 15 s instead of a global broadcast (§13.3, ADR-013).
@@ -101,10 +101,10 @@ Mark these off in Phase 5 and Phase 8. "Δ" marks an intended behaviour change.
 - [x] A match gives both players the **same problem, unseen by either of them** (not used in any of their previous contests).
 - [x] Match duration is **30 minutes**. The timer is shown to both players.
 - [x] Submit code in JS, Python, C++ or Java. It is judged against hidden tests.
-- [ ] **The first accepted solution wins.** _(Winner logic done in Phase 3; coins come with rating-service, Phase 4.)_ Winner gets **+50 coins**, loser gets **−50** (floored at 0).
-- [ ] **Leave/forfeit:** the leaver loses (−50) and the opponent wins (+50).
-- [ ] **Timeout with no winner:** both players get **−50** (floored at 0).
-- [ ] **Level from coins:** `<500 → 1`, `<900 → 2`, `<1000 → 3`, else `4`.
+- [x] **The first accepted solution wins.** _(Winner logic in Phase 3; coins applied by rating-service in Phase 4.)_ Winner gets **+50 coins**, loser gets **−50** (floored at 0).
+- [x] **Leave/forfeit:** the leaver loses (−50) and the opponent wins (+50).
+- [x] **Timeout with no winner:** both players get **−50** (floored at 0).
+- [x] **Level from coins:** `<500 → 1`, `<900 → 2`, `<1000 → 3`, else `4`.
 - [x] Reconnecting to an active match after a refresh or disconnect restores the problem and the remaining time.
 - [x] Active contests list (for rejoining).
 - [ ] Leaderboard: top 50 (admins excluded), plus your own rank, with online indicators.
@@ -395,10 +395,10 @@ Each service has its own Postgres database, and an `outbox` and `processed_event
 ### 8.7 rating-service
 
 - **Owns:** player stats (coins, level, wins/losses/draws, streak; rating later), coin ledger, rating history, and the leaderboard ZSET.
-- **API:** `GET /leaderboard?scope=global|friends&limit=50`, `GET /leaderboard/me`, `GET /stats/:userId`, `GET /stats/:userId/history?cursor=`
+- **API:** `GET /leaderboard?scope=global|friends` (top 50), `GET /leaderboard/me`, `GET /stats/:userId`, `GET /stats/me/ledger?cursor=&matchIds=` (own coin history only; the profile BFF joins it with match history)
 - **Consumes:** `identity.user.registered.v1` (creates stats with 400 coins, level 1), `battle.match.completed.v1`, `identity.user.role_changed.v1` (admins are excluded from the leaderboard).
 - **Events out:** `rating.stats.changed.v1`.
-- **Jobs:** `leaderboard-rebuild`.
+- **Jobs:** leaderboard rebuild (leader-elected loop on boot and daily, plus a repair pass when a ZSET write was missed or Redis lost its data). No BullMQ queue.
 
 ### 8.8 notification-service
 
@@ -1834,7 +1834,7 @@ Script: `scripts/migrate-v1/` (TS). It is **idempotent** (upserts on `legacy_mon
 
 ### Phase 4: Rating, leaderboard, notifications
 
-- [ ] rating-service: stats from registration, ledger application (idempotent), ZSET, top-50/my-rank/friends leaderboard, Postgres fallback, rebuild job, stats history API.
+- [x] rating-service: stats from registration, ledger application (idempotent), ZSET, top-50/my-rank/friends leaderboard, Postgres fallback, rebuild job, stats history API. _(4A. The ZSET moves from rating's own `rating.stats.changed.v1`, i.e. after commit. The Postgres fallback orders exactly like the ZSET (coins, whole second, member desc), so both answer the same. The friends board comes straight from Postgres. Realtime pushes `stats:updated`.)_
 - [ ] notification-service: in-app notifications from events, unread count, read APIs.
 - [ ] gateway BFF: profile and lobby aggregation.
 - [ ] Web: leaderboard (ISR + rank + presence dots), profile (charts, history), notification centre, on-demand revalidation.

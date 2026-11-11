@@ -1,4 +1,4 @@
-import { battleEvents, judgeEvents, userEvents, type EnvelopeBase } from '@cb/contracts';
+import { battleEvents, judgeEvents, ratingEvents, userEvents, type EnvelopeBase } from '@cb/contracts';
 import { describe, expect, it } from 'vitest';
 import { route } from './delivery.js';
 
@@ -125,7 +125,35 @@ describe('route', () => {
     });
   });
 
+  it('a coin change goes to its player as stats:updated; a visibility change does not', () => {
+    const data = {
+      userId: A,
+      coins: 450,
+      level: 1,
+      wins: 1,
+      losses: 0,
+      draws: 0,
+      streak: 1,
+      bestStreak: 1,
+      delta: 50,
+      reason: 'match_win',
+      matchId: M,
+      hidden: false,
+      updatedAt: '2026-11-12T10:00:00.000Z',
+    };
+    const r = route(env(ratingEvents.statsChangedV1.type, data, [A]));
+    expect(r.deliveries).toEqual([
+      {
+        to: { userIds: [A] },
+        event: 'stats:updated',
+        message: expect.objectContaining({ data: { coins: 450, level: 1, delta: 50, matchId: M } }),
+      },
+    ]);
+    const hidden = { ...data, delta: 0, reason: 'visibility', matchId: null, hidden: true };
+    expect(route(env(ratingEvents.statsChangedV1.type, hidden, [A])).deliveries).toEqual([]);
+  });
+
   it('unknown events are ignored', () => {
-    expect(route(env('rating.stats.changed.v1', {}))).toEqual({ deliveries: [], effects: [] });
+    expect(route(env('template.greeting.created.v1', {}))).toEqual({ deliveries: [], effects: [] });
   });
 });
