@@ -1823,7 +1823,7 @@ Script: `scripts/migrate-v1/` (TS). It is **idempotent** (upserts on `legacy_mon
 - [x] `domain/match-rules`: challenge and match state machines + winner resolution (earliest-submitted AC; deciding).
 - [x] battle-service: challenges (create/accept/reject/cancel/expire), start saga + compensation, `match_submissions` read model consumer, winner logic, forfeit, timeout job, reconciler (advisory lock), active match / state / history APIs, participation internal API, tab lease, admission control. _(PR #12; the tab lease came with realtime.)_
 - [x] realtime: ticket auth, local rooms, per-node Kafka consumer delivery, presence (per connection + TTL + debounce + friend fan-out), lobby and query HTTP APIs, rate limits, graceful shutdown.
-- [ ] Web: lobby, challenge modal, battle room (CodeMirror, panels, timer with server offset, drafts in IndexedDB, results panel, opponent activity), end screen, rejoin banner, multi-tab alert.
+- [x] Web: lobby, challenge modal, battle room (CodeMirror, panels, timer with server offset, drafts in IndexedDB, results panel, opponent activity), end screen, rejoin banner, multi-tab alert.
 
 **DoD:**
 
@@ -1966,17 +1966,17 @@ Checked on **2026-11-08**. Re-check these before decisions that depend on them:
 
 ## 29. Progress tracker (update as you go)
 
-| Phase                                  | Status         | Notes / links                                           |
-| -------------------------------------- | -------------- | ------------------------------------------------------- |
-| 0 Foundation                           | ✅ Done        | PR #1 merged 2026-11-10.                                |
-| 1 Identity / User / Gateway / Web auth | ✅ Done        | PRs #2–#4 merged; web on `phase-1/web` (PR #5).         |
-| 2 Problems + Judge                     | 🟡 In progress | PRs #6–#10 merged; judge ops on `phase-2/judge-ops`.    |
-| 3 Battle + Realtime                    | 🟡 In progress | PR #12 merged (battle); realtime on `phase-3/realtime`. |
-| 4 Rating / Leaderboard / Notifications | ⬜             |                                                         |
-| 5 Frontend polish                      | ⬜             |                                                         |
-| 6 Hardening                            | ⬜             |                                                         |
-| 7 AI                                   | ⬜             |                                                         |
-| 8 Migration + Cutover                  | ⬜             |                                                         |
+| Phase                                  | Status         | Notes / links                                            |
+| -------------------------------------- | -------------- | -------------------------------------------------------- |
+| 0 Foundation                           | ✅ Done        | PR #1 merged 2026-11-10.                                 |
+| 1 Identity / User / Gateway / Web auth | ✅ Done        | PRs #2–#4 merged; web on `phase-1/web` (PR #5).          |
+| 2 Problems + Judge                     | 🟡 In progress | PRs #6–#10 merged; judge ops on `phase-2/judge-ops`.     |
+| 3 Battle + Realtime                    | 🟡 In progress | PRs #12, #13 merged; web battle on `phase-3/web-battle`. |
+| 4 Rating / Leaderboard / Notifications | ⬜             |                                                          |
+| 5 Frontend polish                      | ⬜             |                                                          |
+| 6 Hardening                            | ⬜             |                                                          |
+| 7 AI                                   | ⬜             |                                                          |
+| 8 Migration + Cutover                  | ⬜             |                                                          |
 
 ### Resume here (Phase 1 complete, 2026-11-11)
 
@@ -2056,6 +2056,15 @@ It found three bugs that fake-judge0 couldn't show, all fixed with regression te
 - Tests: realtime 5 unit + 6 integration (tickets, presence, friend fan-out, Kafka delivery, a whole match, connection cap); battle 17; user 13; gateway 14.
 - Verified in dev: two users connect with tickets from the web proxy; challenge → accept → submit → verdicts → `match:ended` all arrive live, in order, about 0.1–0.4 s after the API call.
 
+**Phase 3 progress (part C, branch `phase-3/web-battle`):**
+
+- Socket client (`lib/realtime.ts`): one socket per tab, a fresh ticket on every (re)connect, backoff with jitter up to 30 s, `presence:ping` every 25 s, dedupe by `eventId`, typed per-event subscriptions; `socket.io-client` is loaded on demand. A global bridge (`components/battle-global.tsx`) turns events into UI state: incoming challenge modal (30 s countdown ring, Esc declines), "Preparing match…", navigation to `/battle/{id}` on `match:started`, notices for declined/expired/aborted, and the "Rejoin match" banner.
+- `/lobby`: online friends (live from `presence:snapshot/update`), online players (paginated, prefix search, count; pulled every 15 s while visible), challenge buttons disabled for players in a match or unverified users, outgoing challenges with countdown and Cancel.
+- `/battle/[matchId]` (client-only): resizable panels (problem | editor | console); CodeMirror 6 (`@uiw/react-codemirror`, VS Code dark theme, v1's snippet completions, loaded with `dynamic()`); per-language starter programs that read `t` and loop the cases (Java's class is `Main` for Judge0); drafts per match and language in IndexedDB (`idb-keyval`); a countdown from the server clock (amber < 5 min, red < 1 min); Run (Ctrl+'), Submit (Ctrl+Enter), custom input, results with the failing file and case, my submissions, opponent activity; forfeit; one tab per match through the lease ("Use here"); end screen (won / lost / draw / aborted with the reason).
+- Playwright `e2e/battle.spec.ts` (two browsers, real stack, fake-judge0): lobby → challenge → accept → room → WA then AC → "You won!" / "You lost", then a second match ending by forfeit. Passes with the phase 1 and admin specs.
+
+**Remaining for Phase 3:** chaos drill 2 (kill a realtime node during a match), a timeout E2E (needs a short `MATCH_DURATION_SECONDS` stack; timeouts are covered by battle-service integration tests), `BroadcastChannel` same-browser tab detection, the "3-2-1" intro, and the parity checklist pass. Coins on the end screen come with rating-service (Phase 4).
+
 The `battle.match.started.v1` "seen" consumer in problem-service waits for battle-service (Phase 3).
 
 Deferred: an identity admin endpoint to change roles (the `identity.user.role_changed.v1` contract exists); avatar upload UI and profile editing page; Storybook for `packages/ui` (Phase 5); E2E in CI (needs the compose stack in CI, Phase 6). Avatar uploads need `CLOUDINARY_*` env vars from the owner.
@@ -2085,3 +2094,4 @@ Deferred: an identity admin endpoint to change roles (the `identity.user.role_ch
 - 2026-11-12: Hosting decision. Everything runs on one host behind Caddy (Oracle Always Free VM when the account works; until then the dev laptop with a Cloudflare Tunnel for demos). Vercel is dropped: realtime needs a long-lived WebSocket server anyway, and one origin keeps the gateway and services off the internet. ₹0 either way.
 - 2026-11-12: Battle decisions. Timeout without a winner is a draw for both players (`match_participants.result = 'draw'`; rating-service applies the −50 per plan §15). `matches.problem_slug` is stored so the battle page can load the public statement. Judge-event handlers run inside the consumer's inbox transaction, so the verdict they write is visible to the decision in the same transaction.
 - 2026-11-12: Realtime decisions. Presence changes cross nodes through Redis pub/sub (`presence:changes`), not a Kafka topic: the topic budget is 5 and presence is Redis-only anyway; business events still come through Kafka, so challenges and match events reach sockets with Redis down. Friend lists are cached in memory per node and dropped on `user.friendship.changed.v1` (every node consumes every event). The socket URL comes with the ticket: in dev the browser connects to the realtime node directly (Next.js route handlers can't proxy WebSockets); in production Caddy serves `/socket.io` on the site's own origin. battle-service's presence check fails open (a challenge to someone who isn't there just expires).
+- 2026-11-12: Web battle decisions. No Zustand: live UI state (incoming challenges, preparing, friend statuses) is a 30-line store on `useSyncExternalStore`; server state stays in TanStack Query, and socket events invalidate the exact queries they affect. The battle editor and `socket.io-client` load on demand, so non-battle routes don't pay for them. The clock offset is taken from the state snapshot's `serverNow` (no separate ping round trip yet).

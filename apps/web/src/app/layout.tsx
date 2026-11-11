@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
+import { BattleGlobal } from '@/components/battle-global';
 import { SiteHeader } from '@/components/site-header';
 import { VerifyBanner } from '@/components/verify-banner';
 import './globals.css';
@@ -28,6 +29,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           </a>
           <SiteHeader />
           <VerifyBanner />
+          <BattleGlobal />
           <main id="main" className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6">
             {children}
           </main>

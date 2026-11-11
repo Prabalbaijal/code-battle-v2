@@ -2,7 +2,7 @@ import { AUTH_COOKIES } from '@cb/contracts/constants';
 import { NextResponse, type NextRequest } from 'next/server';
 
 /** Pages that need a session. */
-const PROTECTED = ['/friends', '/settings', '/admin'];
+const PROTECTED = ['/friends', '/settings', '/admin', '/lobby', '/battle'];
 /** Pages pointless for a signed-in user. */
 const GUEST_ONLY = ['/login', '/register'];
 
@@ -28,5 +28,13 @@ export function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/friends/:path*', '/settings/:path*', '/admin/:path*', '/login', '/register'],
+  matcher: [
+    '/friends/:path*',
+    '/settings/:path*',
+    '/admin/:path*',
+    '/lobby/:path*',
+    '/battle/:path*',
+    '/login',
+    '/register',
+  ],
 };
