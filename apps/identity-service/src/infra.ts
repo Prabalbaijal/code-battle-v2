@@ -87,7 +87,7 @@ export async function createInfra(env: Env, logger: Logger): Promise<Infra> {
   // identity verifies its own tokens locally (no JWKS round trip to itself)
   const verifier = new JwtVerifier({ jwks: signer.publicJwks() });
   const authHooks = createAuthHooks(verifier, { csrf: env.CSRF_REQUIRED });
-  const limits = createAuthRateLimits(safeRedis, logger);
+  const limits = createAuthRateLimits(safeRedis, logger, env.AUTH_RATE_LIMIT_SCALE);
   const auth = new AuthService({
     db: db.db,
     outbox,

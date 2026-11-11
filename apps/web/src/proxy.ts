@@ -2,7 +2,7 @@ import { AUTH_COOKIES } from '@cb/contracts/constants';
 import { NextResponse, type NextRequest } from 'next/server';
 
 /** Pages that need a session. */
-const PROTECTED = ['/friends', '/settings', '/admin', '/lobby', '/battle'];
+const PROTECTED = ['/friends', '/settings', '/admin', '/lobby', '/battle', '/notifications'];
 /** Pages pointless for a signed-in user. */
 const GUEST_ONLY = ['/login', '/register'];
 
@@ -34,6 +34,7 @@ export const config = {
     '/admin/:path*',
     '/lobby/:path*',
     '/battle/:path*',
+    '/notifications/:path*',
     '/login',
     '/register',
   ],

@@ -17,6 +17,8 @@ import {
   useAnswerChallenge,
   useLive,
 } from '@/lib/battle';
+import { describe as describeNotification, notificationKeys } from '@/lib/notifications';
+import { ratingKeys } from '@/lib/rating';
 import { realtime, useRealtimeEvent, useRealtimeStatus } from '@/lib/realtime';
 import { useMe } from '@/lib/session';
 
@@ -134,6 +136,22 @@ function RealtimeBridge() {
   useRealtimeEvent('match:ended', (m) => {
     void qc.invalidateQueries({ queryKey: battleKeys.active });
     void qc.invalidateQueries({ queryKey: battleKeys.match(m.data.matchId) });
+  });
+  // coins moved (a match ended): everything showing coins refetches
+  useRealtimeEvent('stats:updated', (m) => {
+    void qc.invalidateQueries({ queryKey: ['leaderboard'] });
+    void qc.invalidateQueries({ queryKey: ['profile'] });
+    void qc.invalidateQueries({ queryKey: ratingKeys.ledger });
+    if (m.data.matchId) void qc.invalidateQueries({ queryKey: ratingKeys.matchCoins(m.data.matchId) });
+  });
+  useRealtimeEvent('notification:new', (m) => {
+    const n = m.data.notification;
+    void qc.invalidateQueries({ queryKey: notificationKeys.all });
+    // challenges have their own modal and results their own screen: toast only the friend ones
+    if (n.readAt === null && (n.type === 'friend_request' || n.type === 'friend_accepted')) {
+      notify(describeNotification(n).text);
+      void qc.invalidateQueries({ queryKey: ['friend-requests'] });
+    }
   });
   useRealtimeEvent(
     'match:deciding',

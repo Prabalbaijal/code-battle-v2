@@ -10,6 +10,8 @@ export default defineConfig({
   timeout: 60_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,
+  // every spec drives the whole stack on one machine: in parallel they starve each other
+  workers: 1,
   retries: 0,
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {

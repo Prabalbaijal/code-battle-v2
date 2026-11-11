@@ -107,11 +107,11 @@ Mark these off in Phase 5 and Phase 8. "Δ" marks an intended behaviour change.
 - [x] **Level from coins:** `<500 → 1`, `<900 → 2`, `<1000 → 3`, else `4`.
 - [x] Reconnecting to an active match after a refresh or disconnect restores the problem and the remaining time.
 - [x] Active contests list (for rejoining).
-- [ ] Leaderboard: top 50 (admins excluded), plus your own rank, with online indicators.
-- [ ] Profile: level, coins, match history (opponent, result win/lose/draw, coin delta, date), and a performance graph.
+- [x] Leaderboard: top 50 (admins excluded), plus your own rank, with online indicators. **Δ:** a Friends tab; signed-out visitors can see it.
+- [x] Profile: level, coins, match history (opponent, result win/lose/draw, coin delta, date), and a performance graph. **Δ:** the delta is the real change from the ledger (v1 bug #21); history and the coin chart are only on your own profile.
 - [x] Multi-tab: warn the user when a battle is open in another tab.
 - [x] Admin only: add a question (title, description, difficulty Easy/Medium/Hard, input/output format, examples with explanation, constraints, tests, per-language time limits). **Δ:** now through a problem-authoring flow with test files and calibration (§14).
-- [ ] Notification panel (friend requests, challenges).
+- [x] Notification panel (friend requests, challenges). **Δ:** also match results with the coin change; missed (expired) challenges stay unread; live over the socket.
 
 ---
 
@@ -1838,7 +1838,7 @@ Script: `scripts/migrate-v1/` (TS). It is **idempotent** (upserts on `legacy_mon
 - [x] rating-service: stats from registration, ledger application (idempotent), ZSET, top-50/my-rank/friends leaderboard, Postgres fallback, rebuild job, stats history API. _(4A. The ZSET moves from rating's own `rating.stats.changed.v1`, i.e. after commit. The Postgres fallback orders exactly like the ZSET (coins, whole second, member desc), so both answer the same. The friends board comes straight from Postgres. Realtime pushes `stats:updated`.)_
 - [x] notification-service: in-app notifications from events, unread count, read APIs. _(4B. Friend request / accepted, challenge received (answered → read, expired → stays unread as a missed challenge), match result merged with rating's real coin change in either order. `UNIQUE (user_id, dedupe_key)` + inbox. Each change goes out as `notification.notification.upserted.v1` on a new `notification.events` topic; realtime pushes `notification:new`.)_
 - [x] gateway BFF: profile and lobby aggregation. _(4B. `GET /api/v1/bff/profile/:username` = profile + stats + your own last 10 matches with the real coin delta; `GET /api/v1/bff/history?cursor=` pages it. Calls go out with the caller's own token; stats/ledger degrade to null. The lobby needs no BFF: realtime's presence routes already return profiles in one call.)_
-- [ ] Web: leaderboard (ISR + rank + presence dots), profile (charts, history), notification centre, on-demand revalidation.
+- [x] Web: leaderboard (ISR + rank + presence dots), profile (charts, history), notification centre, on-demand revalidation. _(4C. Client-rendered with TanStack Query instead of ISR: both pages are per-viewer (your rank, you/friends, relationship) and the socket's `stats:updated` refreshes them, so there's nothing to revalidate on demand.)_
 
 **DoD:**
 
@@ -1967,17 +1967,17 @@ Checked on **2026-11-08**. Re-check these before decisions that depend on them:
 
 ## 29. Progress tracker (update as you go)
 
-| Phase                                  | Status         | Notes / links                                        |
-| -------------------------------------- | -------------- | ---------------------------------------------------- |
-| 0 Foundation                           | ✅ Done        | PR #1 merged 2026-11-10.                             |
-| 1 Identity / User / Gateway / Web auth | ✅ Done        | PRs #2–#4 merged; web on `phase-1/web` (PR #5).      |
-| 2 Problems + Judge                     | 🟡 In progress | PRs #6–#10 merged; judge ops on `phase-2/judge-ops`. |
-| 3 Battle + Realtime                    | ✅ Done        | PRs #12–#14 merged; DoD on `phase-3/finish`.         |
-| 4 Rating / Leaderboard / Notifications | ⬜             |                                                      |
-| 5 Frontend polish                      | ⬜             |                                                      |
-| 6 Hardening                            | ⬜             |                                                      |
-| 7 AI                                   | ⬜             |                                                      |
-| 8 Migration + Cutover                  | ⬜             |                                                      |
+| Phase                                  | Status  | Notes / links                                   |
+| -------------------------------------- | ------- | ----------------------------------------------- |
+| 0 Foundation                           | ✅ Done | PR #1 merged 2026-11-10.                        |
+| 1 Identity / User / Gateway / Web auth | ✅ Done | PRs #2–#4 merged; web on `phase-1/web` (PR #5). |
+| 2 Problems + Judge                     | ✅ Done | PRs #6–#11 merged.                              |
+| 3 Battle + Realtime                    | ✅ Done | PRs #12–#14 merged; DoD on `phase-3/finish`.    |
+| 4 Rating / Leaderboard / Notifications | ✅ Done | PRs #16–#17 merged; web + DoD on `phase-4/web`. |
+| 5 Frontend polish                      | ⬜      |                                                 |
+| 6 Hardening                            | ⬜      |                                                 |
+| 7 AI                                   | ⬜      |                                                 |
+| 8 Migration + Cutover                  | ⬜      |                                                 |
 
 ### Resume here (Phase 1 complete, 2026-11-11)
 
@@ -2072,6 +2072,15 @@ It found three bugs that fake-judge0 couldn't show, all fixed with regression te
 - Parity checklist: challenge and match items ticked; coin rules wait for Phase 4.
 - Fixes found by these runs: opponent activity no longer depends on Redis (each node keeps match players in memory from `match.started`; Redis only for nodes that started later), the web refetches pending challenges on every socket (re)connect, and the battle page resyncs its state after a reconnect or when the tab becomes visible.
 - Also added: the "3-2-1" intro (server clock, decorative only).
+
+**Phase 4 DoD results (2026-11-12, branches `phase-4/rating`, `phase-4/notifications`, `phase-4/web`):**
+
+- Replaying `match.completed` 5× (the same envelope and five re-published copies) changes coins exactly once: rating-service integration test (inbox + `UNIQUE (match_id, user_id, reason)` on the ledger).
+- Leaderboard correct with Redis stopped, including a match that finished meanwhile; and after Redis loses its data (flush) Postgres answers the same until the index is rebuilt: rating-service integration tests. The Postgres fallback orders exactly like the ZSET.
+- Every §3 parity item is ticked.
+- E2E in Chrome (`phase4.spec.ts`, real stack): a friend request arrives live (toast + bell badge) and accepting it tells the sender; a forfeit shows +50 / −50 on the end screen; the leaderboard (Everyone and Friends) ranks the winner first; the profile shows the stat tiles, the coin chart and the history row with −50; the notification centre shows "You lost vs @… · -50 coins" and "Mark all read" clears the badge. Phase 1, 2 and 3 specs pass alongside it.
+- Fixes found by these runs: a gateway test still listed the old upstreams (CI on #16); the E2E suite now runs with one worker (every spec drives the whole stack on one machine); `AUTH_RATE_LIMIT_SCALE` (dev/E2E only, must be 1 in production) because the suites register more than 10 players per hour from one IP; the lobby helper clicks the first "Challenge" (a friend is listed twice).
+- rating-service's worker starts a new consumer group from the beginning of the topics, so stats are complete even when rating starts after players registered.
 
 The `battle.match.started.v1` "seen" consumer in problem-service waits for battle-service (Phase 3).
 

@@ -10,7 +10,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return { title: `@${username}` };
 }
 
-/** Client-rendered for now; becomes ISR with stats in Phase 4 (plan §21.2). */
+/** Client-rendered: one BFF call (profile + stats + own history), refreshed live by socket events. */
 export default async function ProfilePage({ params }: Props) {
   const { username } = await params;
   return <ProfileView username={username} />;

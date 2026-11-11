@@ -4,6 +4,8 @@ import { z } from 'zod';
 export const envSchema = baseEnvSchema
   .extend({
     SERVICE_NAME: z.string().default('identity-service'),
+    /** Multiplies every auth rate limit. Dev/E2E only (the suites register many players from one IP). */
+    AUTH_RATE_LIMIT_SCALE: z.coerce.number().min(1).max(1000).default(1),
     PORT: z.coerce.number().int().positive().default(4001),
     DATABASE_URL: z.string().url(),
     REDIS_URL: z.string().url(),
@@ -24,6 +26,9 @@ export const envSchema = baseEnvSchema
     CSRF_REQUIRED: envBool(true),
   })
   .superRefine((env, ctx) => {
+    if (env.NODE_ENV === 'production' && env.AUTH_RATE_LIMIT_SCALE !== 1) {
+      ctx.addIssue({ code: 'custom', path: ['AUTH_RATE_LIMIT_SCALE'], message: 'must be 1 in production' });
+    }
     if (env.NODE_ENV === 'production' && !env.JWT_KEYS) {
       ctx.addIssue({ code: 'custom', path: ['JWT_KEYS'], message: 'required in production' });
     }
