@@ -1,12 +1,14 @@
 'use client';
 
+import type { Challenge } from '@cb/contracts';
+
 import { Button, UserAvatar } from '@cb/ui';
 import { Loader2, Swords, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { isApiError, messageFor } from '@/lib/api';
+import { api, isApiError, messageFor } from '@/lib/api';
 import {
   battleKeys,
   liveStore,
@@ -15,7 +17,7 @@ import {
   useAnswerChallenge,
   useLive,
 } from '@/lib/battle';
-import { realtime, useRealtimeEvent } from '@/lib/realtime';
+import { realtime, useRealtimeEvent, useRealtimeStatus } from '@/lib/realtime';
 import { useMe } from '@/lib/session';
 
 // ---------------- notices (small, transient) ----------------
@@ -73,6 +75,32 @@ function RealtimeBridge() {
     if (me) realtime.start();
     else realtime.stop();
   }, [me]);
+
+  // A challenge sent while this tab wasn't connected (page load, network blip) is still pending:
+  // fetch it on every (re)connect so the modal never misses one.
+  const status = useRealtimeStatus();
+  useEffect(() => {
+    if (status !== 'connected') return;
+    void api<{ items: Challenge[] }>('/challenges?direction=incoming')
+      .then(({ items }) =>
+        liveStore.set((s) => ({
+          incoming: [
+            ...s.incoming.filter((c) => !items.some((i) => i.id === c.challengeId)),
+            ...items.map((c) => ({
+              challengeId: c.id,
+              from: {
+                userId: c.from.id,
+                username: c.from.username,
+                fullname: c.from.fullname,
+                avatarUrl: c.from.avatarUrl,
+              },
+              expiresAt: c.expiresAt,
+            })),
+          ],
+        })),
+      )
+      .catch(() => undefined);
+  }, [status]);
 
   useRealtimeEvent('presence:snapshot', (m) => liveStore.set({ friends: m.data.friends }));
   useRealtimeEvent('presence:update', (m) => setFriendStatus(m.data.userId, m.data.status));
