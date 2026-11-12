@@ -20,7 +20,9 @@
     "infra:up": "docker compose -f infra/docker-compose.yml up -d",
     "infra:down": "docker compose -f infra/docker-compose.yml down",
     "new-service": "node scripts/new-service.mjs",
-    "gen-keys": "node scripts/gen-keys.mjs"
+    "gen-keys": "node scripts/gen-keys.mjs",
+    "db:backup": "node infra/backup/backup.mjs",
+    "db:restore-drill": "node infra/backup/restore.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
@@ -30,5 +32,10 @@
     "turbo": "^2.11.10",
     "typescript": "~5.9.3",
     "vitest": "^5.1.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "katex": "0.19.1"
+    }
   }
 }

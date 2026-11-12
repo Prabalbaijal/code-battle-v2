@@ -21,3 +21,6 @@ test-results/
 
 # Storybook
 storybook-static/
+
+# Database backups (infra/backup)
+backups/

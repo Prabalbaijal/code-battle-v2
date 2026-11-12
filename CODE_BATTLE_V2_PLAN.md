@@ -2100,6 +2100,12 @@ It found three bugs that fake-judge0 couldn't show, all fixed with regression te
 
 **Phase 5 DoD results:** performance budgets met on all routes (`check-budgets.mjs` in CI; Web Vitals pass on a throttled phone), and axe reports no serious or critical issues on any page in either colour scheme.
 
+**Phase 6 progress (part A, branch `phase-6/backups`, 2026-11-12):**
+
+- **Backups:** `pnpm db:backup` (`infra/backup/backup.mjs`) dumps every service database (`pg_dump -Fc`) with a manifest of checksums and per-table row counts, keeps the newest N, and can copy off-site through `BACKUP_UPLOAD_CMD` (e.g. rclone to R2). Runs through `docker compose exec`, so the laptop and the VM use the same script.
+- **Restore drill:** `pnpm db:restore-drill <dir>` restores every dump into scratch databases and checks checksums, row counts and table owners, then drops them. **Passed** on the dev stack: 9 databases, 5 769 rows, 47 s. `--for-real` (disaster recovery) was exercised on the template database. Drill log in `infra/backup/README.md`.
+- **Security pass:** OWASP ASVS L1 checklist in `docs/security/asvs-l1.md`, every row tied to code. Fixed on the way: a strict Content-Security-Policy on the web app (no third-party scripts, no eval, no framing, connections only to our own origin and the realtime socket; `e2e/csp.spec.ts` proves a full battle runs without a violation) and Cross-Origin-Opener-Policy; KaTeX 0.16 → 0.19.1 (advisory). Dependency audit: four moderate advisories left, all in tooling paths, accepted with reasons. Open before launch: breached-password check, TLS on the host, rotating the RapidAPI key and production secrets, and the 12-character minimum decision.
+
 The `battle.match.started.v1` "seen" consumer in problem-service waits for battle-service (Phase 3).
 
 Deferred: an identity admin endpoint to change roles (the `identity.user.role_changed.v1` contract exists); avatar upload UI and profile editing page; Storybook for `packages/ui` (Phase 5); E2E in CI (needs the compose stack in CI, Phase 6). Avatar uploads need `CLOUDINARY_*` env vars from the owner.
