@@ -1,3 +1,4 @@
+import { counter, histogram } from '@cb/metrics';
 import {
   battleEvents,
   type judgeEvents,
@@ -52,12 +53,22 @@ function abortReason(err: SelectionError): string {
  * Matches (plan §11.2–11.6). Every state change is a compare-and-set on `matches.status`, so the
  * first writer wins and the loser updates zero rows: no distributed lock anywhere.
  */
+/** Plan §19: accept → match started (SLO p95 < 1.5 s), and how matches end. */
+const startLatency = histogram(
+  'match_start_latency_seconds',
+  'Challenge accepted to match started',
+  ['outcome'],
+  [0.1, 0.25, 0.5, 1, 1.5, 2.5, 5, 10],
+);
+const finished = counter('matches_finished_total', 'Matches that ended', ['end_reason']);
+
 export class MatchService {
   constructor(private readonly d: MatchServiceDeps) {}
 
   // ---------------- start saga (plan §11.2) ----------------
 
   async accept(me: string, challengeId: string): Promise<{ matchId: string; status: MatchRow['status'] }> {
+    const end = startLatency.startTimer();
     // Transaction A: accept, create the match, lock both players.
     const a = await withTransaction(this.d.db, async (tx) => {
       const matchId = newId();
@@ -160,6 +171,7 @@ export class MatchService {
       return m;
     });
     this.d.afterCommit?.();
+    end({ outcome: started?.status === 'in_progress' ? 'started' : 'aborted' });
     return { matchId: a.matchId, status: started?.status ?? 'aborted' };
   }
 
@@ -191,6 +203,7 @@ export class MatchService {
       .where(and(eq(matches.id, matchId), inArray(matches.status, from)))
       .returning();
     if (!m) return false;
+    finished.inc({ end_reason: 'aborted' });
     const freed = await tx.delete(userActiveMatch).where(eq(userActiveMatch.matchId, matchId)).returning();
     const userIds = freed.length ? freed.map((f) => f.userId) : await this.participantIds(tx, matchId);
     await this.d.outbox.add(tx, battleEvents.matchAbortedV1, {
@@ -319,6 +332,7 @@ export class MatchService {
       .where(and(eq(matches.id, m.id), inArray(matches.status, [...OPEN])))
       .returning();
     if (!u) return false; // someone else finished it first
+    finished.inc({ end_reason: endReason });
     const userIds = await this.participantIds(tx, m.id);
     const res = results(userIds, { winnerId, endReason });
     for (const userId of userIds) {

@@ -3,6 +3,7 @@ import swagger from '@fastify/swagger';
 import { REQUEST_ID_HEADER, type ErrorBody, type ErrorCode, type Health } from '@cb/contracts';
 import { isAppError } from '@cb/errors';
 import { newId } from '@cb/ids';
+import { histogram, initMetrics, metricsContentType, renderMetrics } from '@cb/metrics';
 import type { Logger } from '@cb/logger';
 import Fastify, {
   LogController,
@@ -57,7 +58,7 @@ export interface CreateHttpServerOptions {
 const HIDDEN = { schema: { hide: true } } as const;
 
 const SAFE_REQUEST_ID = /^[A-Za-z0-9._:-]{1,128}$/;
-const QUIET_ROUTES = new Set(['/health/live', '/health/ready']);
+const QUIET_ROUTES = new Set(['/health/live', '/health/ready', '/metrics']);
 
 function errorBody(code: ErrorCode, message: string, requestId: string, details?: unknown): ErrorBody {
   return { error: { code, message, requestId, ...(details === undefined ? {} : { details }) } };
@@ -96,11 +97,30 @@ export async function createHttpServer(opts: CreateHttpServerOptions): Promise<H
     app.get('/openapi.json', HIDDEN, async () => app.swagger());
   }
 
+  // plan §19: request latency per route pattern (not raw URL: bounded label values), and /metrics
+  initMetrics(opts.serviceName);
+  const httpDuration = histogram('http_server_duration_seconds', 'HTTP request duration', [
+    'method',
+    'route',
+    'status_code',
+  ]);
+  app.get('/metrics', HIDDEN, async (_req, reply) =>
+    reply.header('content-type', metricsContentType).send(await renderMetrics()),
+  );
+
   app.addHook('onSend', async (req, reply) => {
     reply.header(REQUEST_ID_HEADER, req.id);
   });
   app.addHook('onResponse', async (req, reply) => {
     if (QUIET_ROUTES.has(req.routeOptions.url ?? '')) return;
+    httpDuration.observe(
+      {
+        method: req.method,
+        route: req.routeOptions.url ?? 'unmatched',
+        status_code: String(reply.statusCode),
+      },
+      reply.elapsedTime / 1000,
+    );
     req.log.info(
       { method: req.method, url: req.url, statusCode: reply.statusCode, ms: Math.round(reply.elapsedTime) },
       'request completed',

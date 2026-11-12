@@ -1,3 +1,4 @@
+import { counter, histogram } from '@cb/metrics';
 import { judgeEvents, type JudgeSpec, type LanguageKey } from '@cb/contracts';
 import { withTransaction, type Db, type Tx } from '@cb/db';
 import type { OutboxWriter } from '@cb/events';
@@ -114,6 +115,15 @@ const withTimeout = <T>(p: Promise<T>, ms: number): Promise<T> =>
     );
   });
 
+/** Plan §19: submit → verdict time (SLO: stage-1 p95 < 6 s on hosted Judge0) and verdict mix. */
+const judgeLatency = histogram(
+  'judge_latency_seconds',
+  'Submission to verdict',
+  ['mode'],
+  [0.5, 1, 2, 4, 6, 10, 20, 40, 80],
+);
+const verdicts = counter('judge_verdicts_total', 'Final verdicts', ['mode', 'verdict', 'cached']);
+
 export class JudgingService {
   private profiles = new Map<string, LanguageProfileRow>();
   private instance: InstanceLimits = {
@@ -126,6 +136,10 @@ export class JudgingService {
   private maxBatch = 20;
 
   constructor(private readonly d: JudgingDeps) {}
+
+  queueDepth() {
+    return repo.queueDepth(this.d.db);
+  }
 
   /** Boot: what this Judge0 instance allows, and which languages are configured. */
   configure(instance: InstanceLimits, maxBatch: number) {
@@ -495,6 +509,13 @@ export class JudgingService {
   private async finalizeTx(tx: Tx, sub: SubmissionRow, patch: Partial<SubmissionRow>): Promise<void> {
     const done = await repo.finalize(tx, sub.id, patch);
     if (!done || done.mode === 'calibrate') return; // internal runs: no user-facing events
+    verdicts.inc({ mode: done.mode, verdict: done.verdict ?? 'IE', cached: String(done.fromCache) });
+    if (done.judgedAt) {
+      judgeLatency.observe(
+        { mode: done.mode },
+        (done.judgedAt.getTime() - done.submittedAt.getTime()) / 1000,
+      );
+    }
     await this.d.outbox.add(tx, judgeEvents.submissionJudgedV1, {
       key: done.matchId ?? done.id,
       recipients: [done.userId],

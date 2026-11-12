@@ -30,6 +30,7 @@
     "@cb/http-server": "workspace:*",
     "@cb/ids": "workspace:*",
     "@cb/logger": "workspace:*",
+    "@cb/metrics": "workspace:*",
     "@cb/redis": "workspace:*",
     "@cb/telemetry": "workspace:*",
     "fastify": "^5.12.8",

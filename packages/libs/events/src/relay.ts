@@ -1,9 +1,12 @@
+import { counter, gauge } from '@cb/metrics';
 import { withTransaction, type Db } from '@cb/db';
 import type { Logger } from '@cb/logger';
 import { runUntraced } from '@cb/telemetry';
-import { asc, inArray, isNull } from 'drizzle-orm';
+import { asc, count, inArray, isNull } from 'drizzle-orm';
 import type { Producer } from 'kafkajs';
-import { outbox } from './schema.js';
+import { deadLetters, outbox } from './schema.js';
+
+const published = counter('events_published_total', 'Outbox events published to Kafka', ['topic']);
 
 export interface OutboxRelayOptions {
   db: Db;
@@ -29,6 +32,15 @@ export class OutboxRelay {
   private readonly intervalMs: number;
 
   constructor(private readonly o: OutboxRelayOptions) {
+    // plan §19: what's waiting to go out, and what never could (scraped from Postgres)
+    gauge('outbox_unpublished', 'Outbox rows not yet published to Kafka', [], async (g) => {
+      const [row] = await o.db.select({ n: count() }).from(outbox).where(isNull(outbox.publishedAt));
+      g.set(row?.n ?? 0);
+    });
+    gauge('dead_letters', 'Messages and jobs parked in dead_letters, not replayed', [], async (g) => {
+      const [row] = await o.db.select({ n: count() }).from(deadLetters).where(isNull(deadLetters.replayedAt));
+      g.set(row?.n ?? 0);
+    });
     this.batchSize = o.batchSize ?? 100;
     this.intervalMs = o.intervalMs ?? 1000;
     o.producer.on(o.producer.events.DISCONNECT, () => {
@@ -105,6 +117,7 @@ export class OutboxRelay {
             rows.map((r) => r.id),
           ),
         );
+      for (const [topic, msgs] of byTopic) published.inc({ topic }, msgs.length);
       return rows.length;
     });
   }

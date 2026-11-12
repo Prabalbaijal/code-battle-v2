@@ -1,3 +1,4 @@
+import { counter, gauge } from '@cb/metrics';
 import { envelopeBaseSchema, type EventDefinition, type EventEnvelope } from '@cb/contracts';
 import { withTransaction, type Db, type Tx } from '@cb/db';
 import { newId } from '@cb/ids';
@@ -44,6 +45,14 @@ export type ProcessResult = 'processed' | 'duplicate' | 'skipped' | 'dead_letter
  * The inbox row and the handler's writes commit in one transaction; the offset is committed after.
  * Poison messages go to dead_letters after `maxAttempts` so they never block the partition.
  */
+/** Plan §19: `kafka_consumer_lag{group}` and what the consumers did with each event. */
+const consumerLag = gauge('kafka_consumer_lag', 'Messages behind the latest offset', [
+  'group',
+  'topic',
+  'partition',
+]);
+const consumed = counter('events_consumed_total', 'Events handled by consumers', ['group', 'result']);
+
 export class EventConsumer {
   private consumer: Consumer | undefined;
   private readonly handlers = new Map<string, EventHandler>();
@@ -62,10 +71,18 @@ export class EventConsumer {
     for (const topic of this.o.topics) {
       await this.consumer.subscribe({ topic, fromBeginning: this.o.fromBeginning ?? false });
     }
+    const group = this.o.groupId;
+    this.consumer.on(this.consumer.events.END_BATCH_PROCESS, ({ payload }) => {
+      consumerLag.set(
+        { group, topic: payload.topic, partition: String(payload.partition) },
+        Number(payload.offsetLag),
+      );
+    });
     await this.consumer.run({
       partitionsConsumedConcurrently: 1,
       eachMessage: async ({ message }) => {
-        await this.process(message.value?.toString('utf8') ?? '');
+        const result = await this.process(message.value?.toString('utf8') ?? '');
+        consumed.inc({ group, result });
       },
     });
   }

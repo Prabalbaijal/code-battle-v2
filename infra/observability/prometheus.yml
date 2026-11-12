@@ -1,0 +1,35 @@
+# Dev scrape config (plan §19): the services run on the host (pnpm dev / start-stack), so Prometheus
+# reaches them through host.docker.internal. The production compose file uses service names instead.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: api
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - host.docker.internal:8080 # gateway
+          - host.docker.internal:4001 # identity
+          - host.docker.internal:4002 # user
+          - host.docker.internal:4003 # notification
+          - host.docker.internal:4004 # problem
+          - host.docker.internal:4005 # judge
+          - host.docker.internal:4006 # battle
+          - host.docker.internal:4007 # rating
+          - host.docker.internal:4010 # realtime
+  - job_name: worker
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - host.docker.internal:9401 # identity
+          - host.docker.internal:9402 # user
+          - host.docker.internal:9403 # notification
+          - host.docker.internal:9404 # problem
+          - host.docker.internal:9405 # judge
+          - host.docker.internal:9406 # battle
+          - host.docker.internal:9407 # rating
+  - job_name: redpanda
+    metrics_path: /public_metrics
+    static_configs:
+      - targets: [redpanda:9644]

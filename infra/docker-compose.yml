@@ -96,7 +96,43 @@ services:
       interval: 5s
       retries: 20
 
+  # ---- observability (plan §19): `docker compose -f infra/docker-compose.yml --profile obs up -d`
+  prometheus:
+    image: prom/prometheus:v3.15.1
+    profiles: [obs]
+    command: ['--config.file=/etc/prometheus/prometheus.yml', '--storage.tsdb.retention.time=7d']
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - promdata:/prometheus
+    extra_hosts: ['host.docker.internal:host-gateway'] # the dev services run on the host
+    ports: ['127.0.0.1:9090:9090']
+
+  grafana:
+    image: grafana/grafana:13.2.5
+    profiles: [obs]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin} # dev only; set a real one on the VM
+      GF_AUTH_ANONYMOUS_ENABLED: 'true' # read-only dashboards on localhost
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_ANALYTICS_REPORTING_ENABLED: 'false'
+      GF_ANALYTICS_CHECK_FOR_UPDATES: 'false'
+      ALERT_EMAIL: ${ALERT_EMAIL:-ops@codebattle.invalid}
+      # alert mail needs SMTP (e.g. Brevo's SMTP relay); without it alerts only show in Grafana
+      GF_SMTP_ENABLED: ${GF_SMTP_ENABLED:-false}
+      GF_SMTP_HOST: ${GF_SMTP_HOST:-}
+      GF_SMTP_USER: ${GF_SMTP_USER:-}
+      GF_SMTP_PASSWORD: ${GF_SMTP_PASSWORD:-}
+      GF_SMTP_FROM_ADDRESS: ${GF_SMTP_FROM_ADDRESS:-alerts@codebattle.invalid}
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafanadata:/var/lib/grafana
+    ports: ['127.0.0.1:3001:3000'] # 3000 is the web app
+    depends_on: [prometheus]
+
 volumes:
   pgdata:
   redisdata:
   redpandadata:
+  promdata:
+  grafanadata:

@@ -1,4 +1,5 @@
 import { createHttpServer, type HttpServer } from '@cb/http-server';
+import { gauge } from '@cb/metrics';
 import { Hub } from './hub.js';
 import type { Infra } from './infra.js';
 import { registerPresenceRoutes } from './routes.js';
@@ -33,6 +34,13 @@ export async function buildApp(infra: Infra): Promise<{ app: HttpServer; hub: Hu
     offlineDebounceMs: infra.env.PRESENCE_OFFLINE_DEBOUNCE_MS,
     maxConnectionsPerUser: infra.env.MAX_CONNECTIONS_PER_USER,
   });
+  // plan §19: sockets on this node, and players online across the cluster (Redis; 0 if it's down)
+  gauge('socket_connections', 'Open Socket.IO connections on this node', [], (g) =>
+    g.set(hub.io.engine.clientsCount),
+  );
+  gauge('presence_online_users', 'Players online (all nodes)', [], async (g) =>
+    g.set(await infra.store.count()),
+  );
   await hub.start();
   // plan §13.6: on shutdown, tell clients to reconnect before the server goes away
   app.addHook('preClose', async () => hub.close());
