@@ -37,6 +37,7 @@
     "@cb/ids": "workspace:*",
     "@cb/judge-core": "workspace:*",
     "@cb/logger": "workspace:*",
+    "@cb/metrics": "workspace:*",
     "@cb/queue": "workspace:*",
     "@cb/redis": "workspace:*",
     "@cb/telemetry": "workspace:*",

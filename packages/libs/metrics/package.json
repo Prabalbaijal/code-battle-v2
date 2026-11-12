@@ -1,0 +1,33 @@
+{
+  "name": "@cb/metrics",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "repo": {
+    "kind": "libs"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run --passWithNoTests --testTimeout=20000 --exclude \"**/*.int.test.ts\"",
+    "test:int": "vitest run --passWithNoTests --testTimeout=60000 --hookTimeout=180000 int.test"
+  },
+  "devDependencies": {
+    "@cb/eslint-config": "workspace:*"
+  },
+  "dependencies": {
+    "prom-client": "15.1.3"
+  }
+}

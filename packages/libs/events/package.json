@@ -33,6 +33,7 @@
     "@cb/db": "workspace:*",
     "@cb/ids": "workspace:*",
     "@cb/logger": "workspace:*",
+    "@cb/metrics": "workspace:*",
     "@cb/telemetry": "workspace:*",
     "@opentelemetry/api": "^1.10.0",
     "drizzle-orm": "^0.45.4",

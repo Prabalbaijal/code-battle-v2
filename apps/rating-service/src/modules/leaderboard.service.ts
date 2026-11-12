@@ -1,3 +1,4 @@
+import { counter } from '@cb/metrics';
 import type { Leaderboard, LeaderboardEntry, MyRank, Player } from '@cb/contracts';
 import type { Db } from '@cb/db';
 import type { Logger } from '@cb/logger';
@@ -20,6 +21,9 @@ const CHUNK = 1000;
  * the leaderboard stays correct, just slower. The ZSET is rebuilt on boot, daily, and after a
  * missed update.
  */
+/** Plan §19: how often the leaderboard is served from Redis vs the Postgres fallback. */
+const reads = counter('leaderboard_reads_total', 'Global leaderboard reads', ['source']);
+
 export class LeaderboardService {
   /** A ZSET write was skipped (Redis down): the next maintenance pass rebuilds. */
   dirty = false;
@@ -139,6 +143,7 @@ export class LeaderboardService {
       },
       () => null,
     );
+    reads.inc({ source: fromRedis ? 'redis' : 'postgres' });
     if (!fromRedis) return this.globalFromPostgres(viewerId);
 
     const rows = new Map((await this.d.stats.rows(fromRedis.top)).map((r) => [r.userId, r]));

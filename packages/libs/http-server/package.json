@@ -32,6 +32,7 @@
     "@cb/errors": "workspace:*",
     "@cb/ids": "workspace:*",
     "@cb/logger": "workspace:*",
+    "@cb/metrics": "workspace:*",
     "@fastify/helmet": "^13.2.0",
     "@fastify/swagger": "9.9.2",
     "fastify": "^5.12.8",

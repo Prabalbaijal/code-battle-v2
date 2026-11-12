@@ -46,8 +46,15 @@ test('Phase 4: coins, leaderboard, profile and notifications', async ({ browser 
     await a.page.goto('/leaderboard');
     const rows = a.page.getByRole('row');
     const winner = rows.filter({ hasText: a.username });
-    await expect(winner).toContainText('450');
-    await expect(winner).toContainText('(you)');
+    // in the top 50 (a fresh database), or below it with the "Your rank" strip (a long-lived dev
+    // database full of earlier winners: ties go to whoever got there first)
+    await expect(winner.or(a.page.getByText('Your rank:'))).toBeVisible();
+    if (await winner.count()) {
+      await expect(winner).toContainText('450');
+      await expect(winner).toContainText('(you)');
+    } else {
+      await expect(a.page.getByText('Your rank:').locator('..')).toContainText('450');
+    }
     const friends = a.page.getByRole('tab', { name: 'Friends' });
     await friends.click();
     const panel = a.page.getByRole('tabpanel');

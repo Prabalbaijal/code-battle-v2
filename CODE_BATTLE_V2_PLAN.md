@@ -1859,7 +1859,7 @@ Script: `scripts/migrate-v1/` (TS). It is **idempotent** (upserts on `legacy_mon
 
 - [ ] k6 load tests (HTTP + WebSocket) on the VM against fake-judge0. Record p95s in the README.
 - [x] Chaos drills 1–4 (§18.6), scripted. _(6B: Playwright specs in `apps/web/e2e/chaos/`; results in `docs/chaos-drills.md`. Drill 4 found that admission control couldn't see the worker's Judge0 breaker; fixed with a shared `judge_breakers` table.)_
-- [ ] Grafana dashboards (judge, matches, sockets, Kafka lag, budgets), alerts (email).
+- [x] Grafana dashboards (judge, matches, sockets, Kafka lag, budgets), alerts (email). _(6C: self-hosted Prometheus + Grafana under the compose `obs` profile instead of Grafana Cloud; see `infra/observability/README.md`. Alert email needs SMTP credentials.)_
 - [ ] Backups + restore drill. Security pass (OWASP ASVS L1 checklist, dependency audit).
 
 **DoD:**
@@ -2107,6 +2107,8 @@ It found three bugs that fake-judge0 couldn't show, all fixed with regression te
 - **Security pass:** OWASP ASVS L1 checklist in `docs/security/asvs-l1.md`, every row tied to code. Fixed on the way: a strict Content-Security-Policy on the web app (no third-party scripts, no eval, no framing, connections only to our own origin and the realtime socket; `e2e/csp.spec.ts` proves a full battle runs without a violation) and Cross-Origin-Opener-Policy; KaTeX 0.16 → 0.19.1 (advisory). Dependency audit: four moderate advisories left, all in tooling paths, accepted with reasons. Open before launch: breached-password check, TLS on the host, rotating the RapidAPI key and production secrets, and the 12-character minimum decision.
 
 **Phase 6 progress (part B, branch `phase-6/chaos`, 2026-11-13):** chaos drills 1–4 scripted as Playwright specs against the full stack (`apps/web/e2e/chaos/`), all passing, with timings in `docs/chaos-drills.md`: Redis down mid-match (judged through Postgres in 1.2 s, index caught up 2.2 s after Redis returned), realtime node replaced, Redpanda down (decision waits in the outbox, both players see it 4.5 s after the broker returns), judge failing (submission stays unjudged, new challenges refused, match goes to deciding and is decided 9.3 s after the judge returns). **Bug found and fixed:** the Judge0 breaker trips in the worker but admission control asked the API process, so new matches were never refused during a judge outage; every judge process now records its breaker in `judge_breakers` and capacity reports the worst live state. fake-judge0 gained `DELETE /__fake/faults`.
+
+**Phase 6 progress (part C, branch `phase-6/metrics`, 2026-11-13):** `@cb/metrics` (prom-client): every API serves `/metrics` with `http_server_duration_seconds` per route pattern, workers serve it on `METRICS_PORT`, and the §19 metrics are in place (match start latency, matches active/finished, judge latency/verdicts/Judge0 calls/queue depth/budget/breaker, sockets, presence, consumer lag, outbox, dead letters, emails, leaderboard source). Prometheus v3.15.1 + Grafana 13.2.5 under the compose `obs` profile (localhost only), a provisioned "Code Battle" dashboard generated from `dashboard.mjs` with SLO thresholds, and six alert rules to an email contact point. Verified: all 17 scrape targets up, the dashboard renders live values, the judge counters move on a real verdict.
 
 The `battle.match.started.v1` "seen" consumer in problem-service waits for battle-service (Phase 3).
 

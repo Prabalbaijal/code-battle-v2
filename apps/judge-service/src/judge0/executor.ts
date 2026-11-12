@@ -1,3 +1,4 @@
+import { counter, histogram } from '@cb/metrics';
 import { createHttpClient, UpstreamError, type HttpClient } from '@cb/http-client';
 import type { InstanceLimits, RequestLimits, RunResult } from '@cb/judge-core';
 import { CircuitBreaker, type BreakerState } from '@cb/resilience';
@@ -61,6 +62,23 @@ export function normalizeResult(raw: unknown, base64 = true): RunResult & { toke
 }
 
 const BREAKER_RESET_MS = 30_000;
+
+/** Plan §19: every Judge0 call (they cost quota), by operation and outcome, and how long it took. */
+const calls = counter('judge0_calls_total', 'Judge0 API calls', ['op', 'result']);
+const callSeconds = histogram('judge0_call_duration_seconds', 'Judge0 API call duration', ['op']);
+async function timed<T>(op: 'submit' | 'fetch', fn: () => Promise<T>): Promise<T> {
+  const end = callSeconds.startTimer({ op });
+  try {
+    const out = await fn();
+    calls.inc({ op, result: 'ok' });
+    return out;
+  } catch (err) {
+    calls.inc({ op, result: (err as Error).name === 'CircuitOpenError' ? 'breaker_open' : 'error' });
+    throw err;
+  } finally {
+    end();
+  }
+}
 const FIELDS = 'token,status,time,wall_time,memory,stdout,stderr,compile_output,message';
 
 export interface Judge0Options {
@@ -131,33 +149,37 @@ export class Judge0HttpExecutor implements CodeExecutor {
   }
 
   async submitBatch(reqs: ExecRequest[]): Promise<(string | null)[]> {
-    const res = await this.http.request({
-      method: 'POST',
-      path: '/submissions/batch',
-      query: { base64_encoded: true },
-      // POST isn't idempotent: retrying could double-spend quota, so no automatic retry here.
-      retry: false,
-      body: {
-        submissions: reqs.map((r) => ({
-          source_code: b64(r.sourceCode),
-          language_id: r.languageId,
-          stdin: b64(r.stdin),
-          ...r.limits,
-          ...(r.callbackUrl ? { callback_url: r.callbackUrl } : {}),
-        })),
-      },
-      schema: z.array(z.object({ token: z.string().optional() }).loose()),
-    });
+    const res = await timed('submit', () =>
+      this.http.request({
+        method: 'POST',
+        path: '/submissions/batch',
+        query: { base64_encoded: true },
+        // POST isn't idempotent: retrying could double-spend quota, so no automatic retry here.
+        retry: false,
+        body: {
+          submissions: reqs.map((r) => ({
+            source_code: b64(r.sourceCode),
+            language_id: r.languageId,
+            stdin: b64(r.stdin),
+            ...r.limits,
+            ...(r.callbackUrl ? { callback_url: r.callbackUrl } : {}),
+          })),
+        },
+        schema: z.array(z.object({ token: z.string().optional() }).loose()),
+      }),
+    );
     return res.data.map((x) => x.token ?? null);
   }
 
   async fetchBatch(tokens: string[]): Promise<(RunResult & { token: string })[]> {
     if (!tokens.length) return [];
-    const res = await this.http.request({
-      path: '/submissions/batch',
-      query: { tokens: tokens.join(','), base64_encoded: true, fields: FIELDS },
-      schema: z.object({ submissions: z.array(z.unknown()) }),
-    });
+    const res = await timed('fetch', () =>
+      this.http.request({
+        path: '/submissions/batch',
+        query: { tokens: tokens.join(','), base64_encoded: true, fields: FIELDS },
+        schema: z.object({ submissions: z.array(z.unknown()) }),
+      }),
+    );
     return res.data.submissions.filter((s) => s !== null).map((s) => normalizeResult(s));
   }
 }

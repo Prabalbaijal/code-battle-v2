@@ -35,6 +35,7 @@
     "@cb/http-server": "workspace:*",
     "@cb/ids": "workspace:*",
     "@cb/logger": "workspace:*",
+    "@cb/metrics": "workspace:*",
     "@cb/redis": "workspace:*",
     "@cb/scoring": "workspace:*",
     "@cb/telemetry": "workspace:*",

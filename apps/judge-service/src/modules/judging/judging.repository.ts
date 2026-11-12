@@ -226,6 +226,19 @@ export const judgingRepository = {
     return rows.length > 0;
   },
 
+  /** How many submissions are waiting and running (the `judge_queue_depth` gauge). */
+  async queueDepth(ex: Executor): Promise<{ status: 'queued' | 'running'; n: number }[]> {
+    const rows = await ex
+      .select({ status: submissions.status, n: sql<number>`count(*)::int` })
+      .from(submissions)
+      .where(inArray(submissions.status, ['queued', 'running']))
+      .groupBy(submissions.status);
+    return (['queued', 'running'] as const).map((status) => ({
+      status,
+      n: rows.find((r) => r.status === status)?.n ?? 0,
+    }));
+  },
+
   /** Submissions with runs waiting longer than `olderThanSec` (safety net when a poll job got lost). */
   async stuckSubmissions(ex: Executor, olderThanSec: number): Promise<string[]> {
     const rows = await ex

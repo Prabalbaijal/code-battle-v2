@@ -85,4 +85,19 @@ describe('createHttpServer', () => {
     expect(r.statusCode).toBe(413);
     expect(r.json().error.code).toBe('PAYLOAD_TOO_LARGE');
   });
+
+  it('serves /metrics with request latency per route pattern', async () => {
+    app = await createHttpServer({ serviceName: 't', logger });
+    app.get('/items/:id', async () => ({ ok: true }));
+    await app.inject({ method: 'GET', url: '/items/42' });
+    await app.inject({ method: 'GET', url: '/items/43' });
+    const m = await app.inject({ method: 'GET', url: '/metrics' });
+    expect(m.statusCode).toBe(200);
+    expect(m.headers['content-type']).toContain('text/plain');
+    // one series for the pattern, not one per id
+    expect(m.body).toContain(
+      'http_server_duration_seconds_count{service="t",method="GET",route="/items/:id",status_code="200"} 2',
+    );
+    expect(m.body).not.toContain('route="/metrics"');
+  });
 });
