@@ -145,3 +145,16 @@ export type DriftCheckRow = typeof judgeDriftChecks.$inferSelect;
 export type SubmissionRow = typeof submissions.$inferSelect;
 export type JudgeRunRow = typeof judgeRuns.$inferSelect;
 export type LanguageProfileRow = typeof languageProfiles.$inferSelect;
+
+/**
+ * Each judge process's Judge0 circuit breaker (Phase 6 chaos drill 4). The breaker that trips is in
+ * the worker (it calls Judge0); admission control asks the API process. Every process records its
+ * state changes here, and capacity reports the worst one. An `open` row only counts until
+ * `open_until`, so a worker that died mid-outage can't block matches forever.
+ */
+export const judgeBreakers = pgTable('judge_breakers', {
+  nodeId: text('node_id').primaryKey(),
+  state: text('state', { enum: ['closed', 'open', 'half_open'] }).notNull(),
+  openUntil: timestamp('open_until', { withTimezone: true }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});

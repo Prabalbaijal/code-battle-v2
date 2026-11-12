@@ -199,7 +199,14 @@ export class ChallengeService {
         expose: true,
       });
     }
-    if (cap.breaker === 'open' || cap.level === 'no_new_matches') {
+    if (cap.breaker === 'open') {
+      // the judge is failing right now (breaker open), not out of budget: say so
+      throw new AppError('JUDGE_AT_CAPACITY', 503, 'The judge is unavailable right now. Try again soon.', {
+        expose: true,
+        details: { breaker: cap.breaker, level: cap.level },
+      });
+    }
+    if (cap.level === 'no_new_matches') {
       throw new AppError('JUDGE_AT_CAPACITY', 503, 'The judge is at capacity for today. Try again later.', {
         expose: true,
         details: { level: cap.level },

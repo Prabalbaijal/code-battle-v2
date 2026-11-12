@@ -29,6 +29,13 @@
       "when": 1794382645495,
       "tag": "0003_drift_checks",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794510107896,
+      "tag": "0004_judge_breakers",
+      "breakpoints": true
     }
   ]
 }

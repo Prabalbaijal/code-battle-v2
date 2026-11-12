@@ -1,6 +1,7 @@
 import { execSync } from 'node:child_process';
 import { expect, test } from '@playwright/test';
-import { player, startMatch, typeCode } from './support';
+import { player, startMatch, typeCode } from '../support';
+import { note, since } from './infra';
 
 /**
  * Chaos drill 2 (plan Phase 3 DoD): a realtime node dies mid-match. Clients reconnect with new
@@ -18,6 +19,8 @@ test('chaos: the realtime node restarts mid-match and the match still finishes f
   await startMatch(a, b);
 
   execSync(restart!, { stdio: 'ignore' });
+  const t0 = Date.now();
+  note('realtime node', 'killed and replaced mid-match');
 
   // the opponent's activity needs a live socket again, so seeing it proves the reconnect
   let attempt = 0;
@@ -33,9 +36,11 @@ print(${++attempt})
     await a.page.getByRole('button', { name: 'Submit' }).click();
     await expect(b.page.getByText(/submission: Wrong answer/).first()).toBeVisible({ timeout: 5_000 });
   }).toPass({ timeout: 90_000, intervals: [6_000] });
+  note('sockets reconnected (opponent activity seen again)', since(t0));
 
   await typeCode(b.page, 'python', '# @fake program=sum-cases\nprint("y")\n');
   await b.page.getByRole('button', { name: 'Submit' }).click();
   await expect(b.page.getByRole('heading', { name: 'You won!' })).toBeVisible({ timeout: 45_000 });
   await expect(a.page.getByRole('heading', { name: 'You lost' })).toBeVisible({ timeout: 15_000 });
+  note('match finished for both', since(t0));
 });

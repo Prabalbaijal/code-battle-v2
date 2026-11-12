@@ -20,6 +20,7 @@ import type { JudgeRunRow, SubmissionRow } from '../../db/schema.js';
 import type { CodeExecutor } from '../../judge0/executor.js';
 import type { ProblemSource } from '../../problems/problem-source.js';
 import { QUEUES } from '../../queues.js';
+import type { BreakerBoard } from '../../judge0/breaker-board.js';
 import { judgingRepository as repo } from '../judging/judging.repository.js';
 
 export interface SubmissionServiceDeps {
@@ -27,6 +28,8 @@ export interface SubmissionServiceDeps {
   outbox: OutboxWriter;
   problems: ProblemSource;
   executor: CodeExecutor;
+  /** Shared breaker state; without it only this process's breaker counts (tests). */
+  breakers?: BreakerBoard;
   dailyBudget: number;
   matchReserveCalls: number;
   maxSubmitsPerMatch: number;
@@ -103,7 +106,9 @@ export class SubmissionService {
     return {
       ...u,
       remaining,
-      breaker: this.d.executor.breakerState,
+      breaker: this.d.breakers
+        ? await this.d.breakers.state(this.d.executor.breakerState)
+        : this.d.executor.breakerState,
       level: degradationLevel(remaining, u.limit),
     };
   }

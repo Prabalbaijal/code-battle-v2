@@ -60,6 +60,7 @@ export function normalizeResult(raw: unknown, base64 = true): RunResult & { toke
   };
 }
 
+const BREAKER_RESET_MS = 30_000;
 const FIELDS = 'token,status,time,wall_time,memory,stdout,stderr,compile_output,message';
 
 export interface Judge0Options {
@@ -67,6 +68,8 @@ export interface Judge0Options {
   auth: 'none' | 'rapidapi' | 'token';
   apiKey?: string;
   fetchImpl?: typeof fetch;
+  /** Breaker transitions (to share them with the other judge processes). */
+  onBreakerChange?: (to: BreakerState, openUntil: Date | null) => void;
 }
 
 export class Judge0HttpExecutor implements CodeExecutor {
@@ -78,8 +81,10 @@ export class Judge0HttpExecutor implements CodeExecutor {
     this.breaker = new CircuitBreaker({
       name: 'judge0',
       failureThreshold: 5,
-      resetTimeoutMs: 30_000,
+      resetTimeoutMs: BREAKER_RESET_MS,
       isFailure: (e) => !(e instanceof UpstreamError) || e.retryable,
+      onStateChange: (_from, to) =>
+        o.onBreakerChange?.(to, to === 'open' ? new Date(Date.now() + BREAKER_RESET_MS) : null),
     });
     const headers: Record<string, string> = {};
     if (o.auth === 'rapidapi') {
