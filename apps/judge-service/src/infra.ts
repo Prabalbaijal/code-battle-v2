@@ -10,6 +10,8 @@ import type { Queue } from 'bullmq';
 import type { FastifyRequest } from 'fastify';
 import type { Kafka, Producer } from 'kafkajs';
 import type { Env } from './config/env.js';
+import { randomUUID } from 'node:crypto';
+import { BreakerBoard } from './judge0/breaker-board.js';
 import { Judge0HttpExecutor, type CodeExecutor } from './judge0/executor.js';
 import { LANGUAGE_RULES, resolveLanguages } from './judge0/languages.js';
 import { judgingRepository } from './modules/judging/judging.repository.js';
@@ -36,6 +38,8 @@ export interface Infra {
   relay: OutboxRelay;
   dispatcher: JobOutboxDispatcher;
   executor: CodeExecutor;
+  /** The Judge0 breaker across every judge process (admission control reads this). */
+  breakers: BreakerBoard;
   problems: ProblemSource;
   authHooks: AuthHooks;
   internalAuth: (req: FastifyRequest) => Promise<void>;
@@ -102,12 +106,18 @@ export async function createInfra(env: Env, logger: Logger, opts: InfraOptions =
     dispatcher.kick();
   };
 
+  const breakers = new BreakerBoard({
+    db: db.db,
+    nodeId: `${env.SERVICE_NAME}-${randomUUID().slice(0, 8)}`,
+    logger,
+  });
   const executor =
     opts.executor ??
     new Judge0HttpExecutor({
       baseUrl: env.JUDGE0_URL,
       auth: env.JUDGE0_AUTH,
       ...(env.JUDGE0_API_KEY ? { apiKey: env.JUDGE0_API_KEY } : {}),
+      onBreakerChange: (to, until) => breakers.record(to, until),
     });
   const problems =
     opts.problems ??
@@ -166,6 +176,7 @@ export async function createInfra(env: Env, logger: Logger, opts: InfraOptions =
     outbox,
     problems,
     executor,
+    breakers,
     participation:
       opts.participation ??
       new HttpMatchParticipation({
@@ -210,6 +221,7 @@ export async function createInfra(env: Env, logger: Logger, opts: InfraOptions =
     relay,
     dispatcher,
     executor,
+    breakers,
     problems,
     authHooks,
     internalAuth,

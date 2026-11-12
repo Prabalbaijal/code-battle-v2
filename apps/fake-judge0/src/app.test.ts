@@ -141,6 +141,21 @@ describe('fake judge0 API', () => {
     expect((await app.inject({ method: 'GET', url: '/__fake/stats' })).json()).toMatchObject({ created: 1 });
   });
 
+  it('clears a fault without dropping stored submissions', async () => {
+    app = await buildFakeJudge0({ logger });
+    const sub = (
+      await app.inject({
+        method: 'POST',
+        url: '/submissions',
+        payload: { source_code: 'x', language_id: 54 },
+      })
+    ).json();
+    await app.inject({ method: 'POST', url: '/__fake/faults', payload: { status: 500, count: 100 } });
+    expect((await app.inject({ method: 'GET', url: `/submissions/${sub.token}` })).statusCode).toBe(500);
+    await app.inject({ method: 'DELETE', url: '/__fake/faults' });
+    expect((await app.inject({ method: 'GET', url: `/submissions/${sub.token}` })).statusCode).toBe(200);
+  });
+
   it('PUTs the result to callback_url and retries on failure', async () => {
     const calls: Array<{ url: string; body: { status: { id: number } } }> = [];
     let fail = true;

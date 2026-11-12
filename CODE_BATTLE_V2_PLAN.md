@@ -1858,7 +1858,7 @@ Script: `scripts/migrate-v1/` (TS). It is **idempotent** (upserts on `legacy_mon
 ### Phase 6: Hardening
 
 - [ ] k6 load tests (HTTP + WebSocket) on the VM against fake-judge0. Record p95s in the README.
-- [ ] Chaos drills 1–4 (§18.6), scripted.
+- [x] Chaos drills 1–4 (§18.6), scripted. _(6B: Playwright specs in `apps/web/e2e/chaos/`; results in `docs/chaos-drills.md`. Drill 4 found that admission control couldn't see the worker's Judge0 breaker; fixed with a shared `judge_breakers` table.)_
 - [ ] Grafana dashboards (judge, matches, sockets, Kafka lag, budgets), alerts (email).
 - [ ] Backups + restore drill. Security pass (OWASP ASVS L1 checklist, dependency audit).
 
@@ -2105,6 +2105,8 @@ It found three bugs that fake-judge0 couldn't show, all fixed with regression te
 - **Backups:** `pnpm db:backup` (`infra/backup/backup.mjs`) dumps every service database (`pg_dump -Fc`) with a manifest of checksums and per-table row counts, keeps the newest N, and can copy off-site through `BACKUP_UPLOAD_CMD` (e.g. rclone to R2). Runs through `docker compose exec`, so the laptop and the VM use the same script.
 - **Restore drill:** `pnpm db:restore-drill <dir>` restores every dump into scratch databases and checks checksums, row counts and table owners, then drops them. **Passed** on the dev stack: 9 databases, 5 769 rows, 47 s. `--for-real` (disaster recovery) was exercised on the template database. Drill log in `infra/backup/README.md`.
 - **Security pass:** OWASP ASVS L1 checklist in `docs/security/asvs-l1.md`, every row tied to code. Fixed on the way: a strict Content-Security-Policy on the web app (no third-party scripts, no eval, no framing, connections only to our own origin and the realtime socket; `e2e/csp.spec.ts` proves a full battle runs without a violation) and Cross-Origin-Opener-Policy; KaTeX 0.16 → 0.19.1 (advisory). Dependency audit: four moderate advisories left, all in tooling paths, accepted with reasons. Open before launch: breached-password check, TLS on the host, rotating the RapidAPI key and production secrets, and the 12-character minimum decision.
+
+**Phase 6 progress (part B, branch `phase-6/chaos`, 2026-11-13):** chaos drills 1–4 scripted as Playwright specs against the full stack (`apps/web/e2e/chaos/`), all passing, with timings in `docs/chaos-drills.md`: Redis down mid-match (judged through Postgres in 1.2 s, index caught up 2.2 s after Redis returned), realtime node replaced, Redpanda down (decision waits in the outbox, both players see it 4.5 s after the broker returns), judge failing (submission stays unjudged, new challenges refused, match goes to deciding and is decided 9.3 s after the judge returns). **Bug found and fixed:** the Judge0 breaker trips in the worker but admission control asked the API process, so new matches were never refused during a judge outage; every judge process now records its breaker in `judge_breakers` and capacity reports the worst live state. fake-judge0 gained `DELETE /__fake/faults`.
 
 The `battle.match.started.v1` "seen" consumer in problem-service waits for battle-service (Phase 3).
 

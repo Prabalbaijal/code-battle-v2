@@ -100,6 +100,7 @@ export async function startWorker(
   infra.dispatcher.start();
 
   const sweep = async () => {
+    await infra.breakers.sweep();
     if (!infra.queueHealthy()) return; // the degraded loop covers this
     for (const id of await judgingRepository.stuckSubmissions(infra.db.db, 120)) {
       await infra.queues[QUEUES.poll]!.add(

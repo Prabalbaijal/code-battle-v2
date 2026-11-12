@@ -16,7 +16,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../app.js';
 import { readEnv } from '../config/env.js';
 import { migrate } from '../db/migrate.js';
-import { judgeBudgetDaily, judgeDriftChecks, judgeRuns } from '../db/schema.js';
+import { judgeBreakers, judgeBudgetDaily, judgeDriftChecks, judgeRuns } from '../db/schema.js';
 import { createInfra, type Infra } from '../infra.js';
 import type { ProblemSource } from '../problems/problem-source.js';
 import { startWorker, type WorkerHandle } from '../worker-runtime.js';
@@ -457,6 +457,32 @@ describe('intake gates', () => {
       level: 'no_new_matches',
     });
     await set(0);
+  });
+
+  it('capacity reports a breaker opened by another judge process, until its reset time (chaos drill 4)', async () => {
+    const cap = async () =>
+      (
+        await poll.app.inject({
+          method: 'GET',
+          url: '/internal/capacity',
+          headers: { authorization: `Bearer ${await signInternalToken(SECRET, 'battle-service')}` },
+        })
+      ).json().breaker as string;
+    // the worker (another process) tripped its breaker; this process's own breaker is closed
+    await poll.infra.db.db
+      .insert(judgeBreakers)
+      .values({ nodeId: 'judge-worker-x', state: 'open', openUntil: new Date(Date.now() + 30_000) });
+    await waitFor(async () => (await cap()) === 'open' || undefined, { what: 'open via the board' });
+    // past its reset time the owner is probing (or gone): half-open, which no longer refuses matches
+    await poll.infra.db.db
+      .update(judgeBreakers)
+      .set({ openUntil: new Date(Date.now() - 1000) })
+      .where(eq(judgeBreakers.nodeId, 'judge-worker-x'));
+    await waitFor(async () => (await cap()) === 'half_open' || undefined, { what: 'half-open after reset' });
+    await poll.infra.db.db.delete(judgeBreakers).where(eq(judgeBreakers.nodeId, 'judge-worker-x'));
+    await waitFor(async () => (await cap()) === 'closed' || undefined, { what: 'closed again' });
+    // every judge instance in this file shares the database: let their 2 s board caches expire
+    await new Promise((r) => setTimeout(r, 2500));
   });
 
   it('counts Judge0 requests like RapidAPI: a 3-file submit is two batches, not three calls', async () => {

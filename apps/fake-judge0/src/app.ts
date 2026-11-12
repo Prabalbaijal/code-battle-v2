@@ -293,6 +293,11 @@ export async function buildFakeJudge0(opts: FakeJudge0Options): Promise<HttpServ
       return { ok: true };
     },
   );
+  // clear the fault only (in-flight submissions stay): the chaos drills' "judge is back"
+  app.delete('/__fake/faults', async () => {
+    fault = undefined;
+    return { ok: true };
+  });
   app.get('/__fake/stats', async () => ({ ...stats, stored: store.size }));
   app.post('/__fake/reset', async () => {
     store.clear();
