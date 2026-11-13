@@ -47,6 +47,8 @@ export interface HubDeps {
 const CHANNEL = 'presence:changes';
 /** Plan §13.6: at most 30 inbound events per minute per connection, 1 KB payloads. */
 const MAX_EVENTS_PER_MIN = 30;
+/** How often a node re-registers its own sockets' presence (well inside CONNECTION_TTL_MS). */
+const HEARTBEAT_MS = 20_000;
 
 /**
  * One realtime node (plan §13): sockets authenticated by single-use tickets, a Kafka consumer of
@@ -56,6 +58,7 @@ export class Hub {
   readonly io: Io;
   private consumer: Consumer | undefined;
   private sweeper: NodeJS.Timeout | undefined;
+  private heartbeat: NodeJS.Timeout | undefined;
   private readonly offlineTimers = new Map<string, NodeJS.Timeout>();
   private readonly matchPlayers = new Map<string, string[]>();
 
@@ -135,6 +138,20 @@ export class Hub {
 
     this.sweeper = setInterval(() => void this.d.store.sweep(), 30_000);
     this.sweeper.unref();
+    // The node vouches for its own sockets: Socket.IO's heartbeat already proves each one is alive,
+    // and server timers aren't throttled like a background tab's. A crashed node stops refreshing,
+    // so its connections still expire after CONNECTION_TTL_MS.
+    this.heartbeat = setInterval(() => void this.refreshLocalPresence(), HEARTBEAT_MS);
+    this.heartbeat.unref();
+  }
+
+  private async refreshLocalPresence(): Promise<void> {
+    const conns: { userId: string; connId: string }[] = [];
+    for (const [connId, socket] of this.io.of('/').sockets) {
+      const userId = (socket.data as { userId?: string }).userId;
+      if (userId) conns.push({ userId, connId });
+    }
+    await this.d.store.refresh(conns);
   }
 
   /** Kafka event → sockets on this node, plus presence side effects. */
@@ -195,19 +212,14 @@ export class Hub {
       case 'friendship': {
         this.d.directory.forgetFriends(e.userLow);
         this.d.directory.forgetFriends(e.userHigh);
-        if (!e.accepted) return;
-        // new friends see each other's status straight away
-        const s = await this.d.store.statuses([e.userLow, e.userHigh]);
-        this.emit(
-          [e.userHigh],
-          'presence:update',
-          this.envelope('presence:update', { userId: e.userLow, status: s[e.userLow]! }),
-        );
-        this.emit(
-          [e.userLow],
-          'presence:update',
-          this.envelope('presence:update', { userId: e.userHigh, status: s[e.userHigh]! }),
-        );
+        // Both friend lists changed (someone added or removed). A `presence:update` only changes
+        // the status of a friend the client already lists, so send each side a fresh snapshot
+        // (names + statuses) instead. Only sockets on this node; every node runs this.
+        for (const id of [e.userLow, e.userHigh]) {
+          if (this.io.of('/').adapter.rooms.get(`user:${id}`)?.size) {
+            this.emit([id], 'presence:snapshot', await this.snapshot(id));
+          }
+        }
         return;
       }
     }
@@ -226,7 +238,7 @@ export class Hub {
       if (Date.now() - w.start > 60_000) socket.data.window = { start: Date.now(), count: 0 };
       if (++socket.data.window.count > MAX_EVENTS_PER_MIN) socket.disconnect(true);
     });
-    socket.on('presence:ping', () => void this.d.store.ping(userId));
+    socket.on('presence:ping', () => void this.d.store.ping(userId, socket.id));
     socket.on('disconnect', () => void this.onDisconnect(userId, socket.id));
 
     if (first && !pending) {
@@ -266,28 +278,29 @@ export class Hub {
   }
 
   private async sendSnapshot(socket: Parameters<Parameters<Io['on']>[1]>[0], userId: string): Promise<void> {
+    socket.emit('presence:snapshot', await this.snapshot(userId));
+  }
+
+  private async snapshot(userId: string): Promise<ServerEnvelope<ServerEvents['presence:snapshot']>> {
     const ids = await this.d.directory.friendIds(userId).catch(() => []);
     const [people, statuses] = await Promise.all([
       this.d.directory.players(ids).catch(() => new Map()),
       this.d.store.statuses(ids),
     ]);
-    socket.emit(
-      'presence:snapshot',
-      this.envelope('presence:snapshot', {
-        friends: ids
-          .filter((id) => people.has(id))
-          .map((id) => {
-            const p = people.get(id)!;
-            return {
-              userId: id,
-              username: p.username,
-              fullname: p.fullname,
-              avatarUrl: p.avatarUrl,
-              status: statuses[id] ?? 'offline',
-            };
-          }),
-      }),
-    );
+    return this.envelope('presence:snapshot', {
+      friends: ids
+        .filter((id) => people.has(id))
+        .map((id) => {
+          const p = people.get(id)!;
+          return {
+            userId: id,
+            username: p.username,
+            fullname: p.fullname,
+            avatarUrl: p.avatarUrl,
+            status: statuses[id] ?? 'offline',
+          };
+        }),
+    });
   }
 
   private envelope<K extends ServerEventName>(
@@ -305,6 +318,7 @@ export class Hub {
   /** Plan §13.6: tell clients to reconnect elsewhere, then close. */
   async close(): Promise<void> {
     if (this.sweeper) clearInterval(this.sweeper);
+    if (this.heartbeat) clearInterval(this.heartbeat);
     for (const t of this.offlineTimers.values()) clearTimeout(t);
     this.io.emit('server:reconnect', this.envelope('server:reconnect', {}));
     // the HTTP server belongs to Fastify, which closes it; here only the sockets go

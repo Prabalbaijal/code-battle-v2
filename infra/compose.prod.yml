@@ -1,0 +1,440 @@
+# Production: everything on one host behind Caddy (plan §23, decision log "hosting").
+#   docker compose -f infra/compose.prod.yml --env-file infra/prod/.env up -d --build
+# Generate infra/prod/.env first: node scripts/gen-prod-env.mjs --domain <your domain>  (see DEPLOY.md)
+#
+# Only Caddy publishes ports (80/443). Caddy sends /api/* to the gateway, /socket.io/* to realtime and
+# everything else to the web app. Each API runs its own migrations before it starts; its worker
+# starts once the API is healthy.
+name: code-battle-prod # separate from the dev stack (infra/docker-compose.yml) and its volumes
+
+x-node: &node
+  restart: unless-stopped
+  networks: [cb]
+  logging: { driver: json-file, options: { max-size: 10m, max-file: '3' } }
+  mem_limit: 320m
+
+x-common-env: &common-env
+  NODE_ENV: production
+  LOG_LEVEL: info
+  NODE_OPTIONS: --max-old-space-size=192
+  REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+  KAFKA_BROKERS: redpanda:9092
+  JWKS_URL: http://identity:4001/.well-known/jwks.json
+  INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET}
+  CSRF_REQUIRED: 'true'
+
+x-health: &health
+  interval: 10s
+  timeout: 3s
+  retries: 12
+  start_period: 40s
+
+x-migrate-and-run:
+  &migrate-and-run [
+    'sh',
+    '-c',
+    'node dist/db/migrate.js && exec node --import ./dist/instrument.js dist/index.js',
+  ]
+x-worker: &worker-cmd ['node', '--import', './dist/instrument.js', 'dist/worker.js']
+
+services:
+  # ---------------- edge ----------------
+  caddy:
+    image: caddy:2.10.2
+    restart: unless-stopped
+    networks: [cb]
+    ports: ['80:80', '443:443']
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS}
+    volumes:
+      - ./prod/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+    depends_on:
+      web: { condition: service_healthy }
+      gateway: { condition: service_healthy }
+
+  # ---------------- data ----------------
+  postgres:
+    image: pgvector/pgvector:0.8.7-pg16-trixie
+    restart: unless-stopped
+    networks: [cb]
+    mem_limit: 1g
+    shm_size: 256m
+    environment:
+      POSTGRES_USER: cb
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: cb
+      PG_PASS_IDENTITY: ${PG_PASS_IDENTITY}
+      PG_PASS_USERS: ${PG_PASS_USERS}
+      PG_PASS_NOTIFICATION: ${PG_PASS_NOTIFICATION}
+      PG_PASS_PROBLEM: ${PG_PASS_PROBLEM}
+      PG_PASS_JUDGE: ${PG_PASS_JUDGE}
+      PG_PASS_BATTLE: ${PG_PASS_BATTLE}
+      PG_PASS_RATING: ${PG_PASS_RATING}
+    command: ['postgres', '-c', 'max_connections=200', '-c', 'shared_buffers=256MB']
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./prod/postgres-init.sh:/docker-entrypoint-initdb.d/01-init.sh:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U cb']
+      <<: *health
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    networks: [cb]
+    mem_limit: 320m
+    # noeviction is required by BullMQ; AOF so queues and the leaderboard survive a restart (plan §18.1)
+    command:
+      [
+        'redis-server',
+        '--requirepass',
+        '${REDIS_PASSWORD}',
+        '--maxmemory',
+        '256mb',
+        '--maxmemory-policy',
+        'noeviction',
+        '--appendonly',
+        'yes',
+        '--appendfsync',
+        'everysec',
+      ]
+    volumes: [redisdata:/data]
+    healthcheck:
+      test: ['CMD-SHELL', 'redis-cli -a "$$REDIS_PASSWORD" --no-auth-warning ping | grep PONG']
+      <<: *health
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+
+  redpanda:
+    image: redpandadata/redpanda:v26.2.6
+    restart: unless-stopped
+    networks: [cb]
+    mem_limit: 1536m
+    command:
+      - redpanda
+      - start
+      - --kafka-addr internal://0.0.0.0:9092
+      - --advertise-kafka-addr internal://redpanda:9092
+      - --rpc-addr redpanda:33145
+      - --advertise-rpc-addr redpanda:33145
+      - --smp 1
+      - --memory 1G
+      - --reserve-memory 0M
+      - --overprovisioned
+      - --set redpanda.auto_create_topics_enabled=true
+      - --set redpanda.default_topic_partitions=2
+      - --default-log-level=warn
+    volumes: [redpandadata:/var/lib/redpanda/data]
+    healthcheck:
+      test: ['CMD-SHELL', "rpk cluster health | grep -E 'Healthy:.+true' || exit 1"]
+      <<: *health
+
+  # ---------------- services ----------------
+  identity:
+    <<: *node
+    image: cb/identity:prod
+    build:
+      { context: .., dockerfile: infra/docker/node-app.Dockerfile, args: { APP: '@cb/identity-service' } }
+    command: *migrate-and-run
+    environment:
+      <<: *common-env
+      PORT: '4001'
+      DATABASE_URL: postgres://identity_svc:${PG_PASS_IDENTITY}@postgres:5432/identity
+      JWT_KEYS: ${JWT_KEYS}
+      WEB_BASE_URL: https://${DOMAIN}
+      REALTIME_URL: https://${DOMAIN}
+      COOKIE_SECURE: 'true'
+    depends_on: &data
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      redpanda: { condition: service_healthy }
+    healthcheck: &http-health
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:'+process.env.PORT+'/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      <<: *health
+  identity-worker:
+    <<: *node
+    image: cb/identity:prod
+    command: *worker-cmd
+    environment:
+      <<: *common-env
+      DATABASE_URL: postgres://identity_svc:${PG_PASS_IDENTITY}@postgres:5432/identity
+      JWT_KEYS: ${JWT_KEYS}
+      WEB_BASE_URL: https://${DOMAIN}
+      REALTIME_URL: https://${DOMAIN}
+      METRICS_PORT: '9401'
+    depends_on: { identity: { condition: service_healthy } }
+
+  user:
+    <<: *node
+    image: cb/user:prod
+    build: { context: .., dockerfile: infra/docker/node-app.Dockerfile, args: { APP: '@cb/user-service' } }
+    command: *migrate-and-run
+    environment: &user-env
+      <<: *common-env
+      PORT: '4002'
+      DATABASE_URL: postgres://users_svc:${PG_PASS_USERS}@postgres:5432/users
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
+    depends_on: *data
+    healthcheck: *http-health
+  user-worker:
+    <<: *node
+    image: cb/user:prod
+    command: *worker-cmd
+    environment:
+      <<: *user-env
+      METRICS_PORT: '9402'
+    depends_on: { user: { condition: service_healthy } }
+
+  notification:
+    <<: *node
+    image: cb/notification:prod
+    build:
+      { context: .., dockerfile: infra/docker/node-app.Dockerfile, args: { APP: '@cb/notification-service' } }
+    command: *migrate-and-run
+    environment: &notification-env
+      <<: *common-env
+      PORT: '4003'
+      DATABASE_URL: postgres://notification_svc:${PG_PASS_NOTIFICATION}@postgres:5432/notification
+      USER_SERVICE_URL: http://user:4002
+      EMAIL_PROVIDER: brevo
+      BREVO_API_KEY: ${BREVO_API_KEY}
+      EMAIL_FROM: ${EMAIL_FROM}
+      EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-Code Battle}
+    depends_on: *data
+    healthcheck: *http-health
+  notification-worker:
+    <<: *node
+    image: cb/notification:prod
+    command: *worker-cmd
+    environment:
+      <<: *notification-env
+      METRICS_PORT: '9403'
+    depends_on: { notification: { condition: service_healthy } }
+
+  problem:
+    <<: *node
+    image: cb/problem:prod
+    build: { context: .., dockerfile: infra/docker/node-app.Dockerfile, args: { APP: '@cb/problem-service' } }
+    command: *migrate-and-run
+    environment: &problem-env
+      <<: *common-env
+      PORT: '4004'
+      DATABASE_URL: postgres://problem_svc:${PG_PASS_PROBLEM}@postgres:5432/problem
+      JUDGE_SERVICE_URL: http://judge:4005
+      SELF_URL: http://problem:4004
+    depends_on: *data
+    healthcheck: *http-health
+  problem-worker:
+    <<: *node
+    image: cb/problem:prod
+    command: *worker-cmd
+    environment:
+      <<: *problem-env
+      METRICS_PORT: '9404'
+    depends_on: { problem: { condition: service_healthy } }
+
+  judge:
+    <<: *node
+    image: cb/judge:prod
+    build: { context: .., dockerfile: infra/docker/node-app.Dockerfile, args: { APP: '@cb/judge-service' } }
+    command: *migrate-and-run
+    environment: &judge-env
+      <<: *common-env
+      PORT: '4005'
+      DATABASE_URL: postgres://judge_svc:${PG_PASS_JUDGE}@postgres:5432/judge
+      PROBLEM_SERVICE_URL: http://problem:4004
+      BATTLE_SERVICE_URL: http://battle:4006
+      JUDGE0_URL: ${JUDGE0_URL}
+      JUDGE0_AUTH: ${JUDGE0_AUTH}
+      JUDGE0_API_KEY: ${JUDGE0_API_KEY}
+      JUDGE0_MODE: poll
+      JUDGE0_DAILY_BUDGET: ${JUDGE0_DAILY_BUDGET}
+      MATCH_RESERVE_CALLS: ${MATCH_RESERVE_CALLS}
+    depends_on: *data
+    healthcheck: *http-health
+  judge-worker:
+    <<: *node
+    image: cb/judge:prod
+    command: *worker-cmd
+    environment:
+      <<: *judge-env
+      METRICS_PORT: '9405'
+    depends_on: { judge: { condition: service_healthy } }
+
+  battle:
+    <<: *node
+    image: cb/battle:prod
+    build: { context: .., dockerfile: infra/docker/node-app.Dockerfile, args: { APP: '@cb/battle-service' } }
+    command: *migrate-and-run
+    environment: &battle-env
+      <<: *common-env
+      PORT: '4006'
+      DATABASE_URL: postgres://battle_svc:${PG_PASS_BATTLE}@postgres:5432/battle
+      PROBLEM_SERVICE_URL: http://problem:4004
+      JUDGE_SERVICE_URL: http://judge:4005
+      USER_SERVICE_URL: http://user:4002
+      REALTIME_SERVICE_URL: http://realtime:4010
+    depends_on: *data
+    healthcheck: *http-health
+  battle-worker:
+    <<: *node
+    image: cb/battle:prod
+    command: *worker-cmd
+    environment:
+      <<: *battle-env
+      METRICS_PORT: '9406'
+    depends_on: { battle: { condition: service_healthy } }
+
+  rating:
+    <<: *node
+    image: cb/rating:prod
+    build: { context: .., dockerfile: infra/docker/node-app.Dockerfile, args: { APP: '@cb/rating-service' } }
+    command: *migrate-and-run
+    environment: &rating-env
+      <<: *common-env
+      PORT: '4007'
+      DATABASE_URL: postgres://rating_svc:${PG_PASS_RATING}@postgres:5432/rating
+      USER_SERVICE_URL: http://user:4002
+    depends_on: *data
+    healthcheck: *http-health
+  rating-worker:
+    <<: *node
+    image: cb/rating:prod
+    command: *worker-cmd
+    environment:
+      <<: *rating-env
+      METRICS_PORT: '9407'
+    depends_on: { rating: { condition: service_healthy } }
+
+  realtime:
+    <<: *node
+    image: cb/realtime:prod
+    build:
+      { context: .., dockerfile: infra/docker/node-app.Dockerfile, args: { APP: '@cb/realtime-service' } }
+    environment:
+      <<: *common-env
+      PORT: '4010'
+      USER_SERVICE_URL: http://user:4002
+      CORS_ORIGINS: https://${DOMAIN}
+      NODE_ID: realtime-1
+    depends_on: *data
+    healthcheck: *http-health
+
+  gateway:
+    <<: *node
+    image: cb/gateway:prod
+    build: { context: .., dockerfile: infra/docker/node-app.Dockerfile, args: { APP: '@cb/gateway' } }
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: info
+      NODE_OPTIONS: --max-old-space-size=192
+      PORT: '8080'
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      JWKS_URL: http://identity:4001/.well-known/jwks.json
+      CORS_ORIGINS: https://${DOMAIN}
+      # Caddy and the web app reach the gateway from this network: trust their X-Forwarded-For
+      TRUSTED_PROXIES: 172.28.0.0/16
+      SERVICE_URL_IDENTITY: http://identity:4001
+      SERVICE_URL_USER: http://user:4002
+      SERVICE_URL_PROBLEM: http://problem:4004
+      SERVICE_URL_JUDGE: http://judge:4005
+      SERVICE_URL_BATTLE: http://battle:4006
+      SERVICE_URL_RATING: http://rating:4007
+      SERVICE_URL_NOTIFICATION: http://notification:4003
+      SERVICE_URL_REALTIME: http://realtime:4010
+    depends_on:
+      identity: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:8080/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      <<: *health
+
+  web:
+    <<: *node
+    image: cb/web:prod
+    build: { context: .., dockerfile: infra/docker/web.Dockerfile }
+    mem_limit: 512m
+    environment:
+      NODE_ENV: production
+      GATEWAY_URL: http://gateway:8080 # server components (profile) fetch the gateway directly
+    depends_on: { gateway: { condition: service_healthy } }
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      <<: *health
+
+  # ---------------- optional ----------------
+  # Laptop hosting: a Cloudflare Tunnel instead of open ports (DEPLOY.md, option B).
+  cloudflared:
+    image: cloudflare/cloudflared:2025.11.1
+    profiles: [tunnel]
+    restart: unless-stopped
+    networks: [cb]
+    command: ['tunnel', '--no-autoupdate', 'run', '--token', '${CLOUDFLARE_TUNNEL_TOKEN:-}']
+    depends_on: [caddy]
+
+  prometheus:
+    image: prom/prometheus:v3.15.1
+    profiles: [obs]
+    restart: unless-stopped
+    networks: [cb]
+    command: ['--config.file=/etc/prometheus/prometheus.yml', '--storage.tsdb.retention.time=7d']
+    volumes:
+      - ./prod/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - promdata:/prometheus
+
+  grafana:
+    image: grafana/grafana:13.2.5
+    profiles: [obs]
+    restart: unless-stopped
+    networks: [cb]
+    ports: ['127.0.0.1:3001:3000'] # reach it with an SSH tunnel: ssh -L 3001:localhost:3001 ubuntu@<vm>
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_AUTH_ANONYMOUS_ENABLED: 'false'
+      GF_ANALYTICS_REPORTING_ENABLED: 'false'
+      ALERT_EMAIL: ${ALERT_EMAIL:-}
+      GF_SMTP_ENABLED: ${GF_SMTP_ENABLED:-false}
+      GF_SMTP_HOST: ${GF_SMTP_HOST:-}
+      GF_SMTP_USER: ${GF_SMTP_USER:-}
+      GF_SMTP_PASSWORD: ${GF_SMTP_PASSWORD:-}
+      GF_SMTP_FROM_ADDRESS: ${GF_SMTP_FROM_ADDRESS:-}
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafanadata:/var/lib/grafana
+
+networks:
+  cb:
+    ipam:
+      config: [{ subnet: 172.28.0.0/16 }]
+
+volumes:
+  pgdata:
+  redisdata:
+  redpandadata:
+  caddydata:
+  caddyconfig:
+  promdata:
+  grafanadata:

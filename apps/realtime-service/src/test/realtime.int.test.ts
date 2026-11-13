@@ -3,6 +3,7 @@ import {
   battleEvents,
   judgeEvents,
   TOPICS,
+  userEvents,
   type EventEnvelope,
   type Player,
   type ServerEnvelope,
@@ -211,6 +212,21 @@ describe('presence', () => {
     expect(internal.json().statuses[a.id]).toBe('offline');
   });
 
+  it('a connection whose presence expired (throttled background tab) comes back on the next ping', async () => {
+    const a = user('sleepy_tab');
+    const s = await connect(a);
+    expect(await status(a)).toBe('online');
+    // the browser slowed its 25 s ping past the 60 s TTL: the hash expired, the socket is still open
+    await infra.redis.del(`presence:{${a.id}}`);
+    expect(await status(a)).toBe('offline');
+    s.emit('presence:ping');
+    await waitFor(async () => ((await status(a)) === 'online' ? true : undefined), {
+      what: 'online again',
+      timeoutMs: 5000,
+    });
+    s.disconnect();
+  });
+
   it('friends get a snapshot on connect and live updates; strangers get nothing', async () => {
     const [a, b, stranger] = [user('fa'), user('fb'), user('fs')];
     befriend(a.id, b.id);
@@ -239,6 +255,37 @@ describe('presence', () => {
       (d: { userId: string; status: string }) => d.userId === a.id && d.status === 'offline',
     );
     expect(ss.events).not.toContain('presence:update');
+  });
+
+  it('becoming friends while both are connected: each gets a fresh snapshot listing the other', async () => {
+    const [a, b] = [user('late_a'), user('late_b')];
+    const [sa, sb] = [await connect(a), await connect(b)];
+    await Promise.all([got(sa, 'presence:snapshot'), got(sb, 'presence:snapshot')]);
+    const [low, high] = a.id < b.id ? [a.id, b.id] : [b.id, a.id];
+    befriend(a.id, b.id); // user-service now answers with the new friend
+
+    const listsOther = (s: typeof sa, other: U) => () =>
+      s.received.some(
+        (m) =>
+          m.type === 'presence:snapshot' &&
+          (m.data as { friends: { userId: string; status: string }[] }).friends.some(
+            (f) => f.userId === other.id && f.status === 'online',
+          ),
+      );
+    await publishUntil(
+      TOPICS.user,
+      low,
+      () =>
+        envelope(userEvents.friendshipChangedV1.type, {
+          userLow: low,
+          userHigh: high,
+          change: 'accepted',
+          actorId: b.id,
+          targetId: a.id,
+          at: new Date().toISOString(),
+        }),
+      () => listsOther(sa, b)() && listsOther(sb, a)(),
+    );
   });
 });
 

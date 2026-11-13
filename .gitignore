@@ -27,3 +27,9 @@ backups/
 
 # k6 output
 load/results/
+
+# scripts/dev-stack.ps1 logs
+.dev-logs/
+
+# Personal notes, kept only on this machine
+docs/INTERVIEW_GUIDE.md

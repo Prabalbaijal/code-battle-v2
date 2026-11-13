@@ -71,6 +71,15 @@ function isErrorBody(v: unknown): v is ErrorBody {
   );
 }
 
+/** Peek at an error response's code without consuming the body. */
+async function isCode(res: Response, code: string): Promise<boolean> {
+  const json: unknown = await res
+    .clone()
+    .json()
+    .catch(() => null);
+  return isErrorBody(json) && json.error.code === code;
+}
+
 async function toError(res: Response): Promise<ApiError> {
   const json: unknown = await res.json().catch(() => null);
   if (isErrorBody(json)) {
@@ -98,7 +107,7 @@ export async function api<T>(path: string, opts: ApiOptions = {}): Promise<T> {
   const send = () =>
     fetchImpl(`/api/v1${path}`, {
       method,
-      headers,
+      headers: { ...headers }, // a copy per attempt: a retry may change the idempotency key
       credentials: 'same-origin',
       ...(opts.body !== undefined ? { body: JSON.stringify(opts.body) } : {}),
       ...(opts.signal ? { signal: opts.signal } : {}),
@@ -108,6 +117,12 @@ export async function api<T>(path: string, opts: ApiOptions = {}): Promise<T> {
   try {
     res = await send();
     if (res.status === 401 && !NO_REFRESH.some((p) => path.startsWith(p)) && (await refreshSession())) {
+      res = await send();
+    } else if (res.status === 403 && (await isCode(res, 'EMAIL_NOT_VERIFIED')) && (await refreshSession())) {
+      // The access token predates verification (the link was opened in another tab, browser or
+      // device): a refreshed token carries ev=true. The rejected request had no effect, so it goes
+      // again with a new idempotency key rather than replaying the stored rejection.
+      if (opts.idempotent) headers[IDEMPOTENCY_HEADER] = crypto.randomUUID();
       res = await send();
     }
   } catch (err) {

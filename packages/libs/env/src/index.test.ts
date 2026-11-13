@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { EnvError, baseEnvSchema, envBool, envList, loadEnv } from './index.js';
+import { EnvError, baseEnvSchema, envBool, envList, loadEnv, envOptional } from './index.js';
 
 describe('loadEnv', () => {
   const schema = baseEnvSchema.extend({ FLAG: envBool(false), HOSTS: envList.default([]) });
@@ -22,5 +22,10 @@ describe('loadEnv', () => {
       expect(msg).toContain('PORT');
       expect(msg).toContain('DB');
     }
+  });
+  it('envOptional: empty means unset, a value must not be blank', () => {
+    expect(envOptional.parse('')).toBeUndefined();
+    expect(envOptional.parse(undefined)).toBeUndefined();
+    expect(envOptional.parse('abc')).toBe('abc');
   });
 });

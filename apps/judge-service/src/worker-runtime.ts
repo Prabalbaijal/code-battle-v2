@@ -36,9 +36,12 @@ export async function startWorker(
       await infra.bootstrapJudge0();
       break;
     } catch (err) {
-      if (attempt >= (opts.bootstrapRetries ?? 30)) throw err;
-      logger.warn({ err }, 'Judge0 not reachable yet; retrying');
-      await new Promise((r) => setTimeout(r, 2000));
+      // Never give up in production: crashing makes Docker restart us in a tight loop that keeps
+      // hitting Judge0 (and its rate limit). Back off 2 s → 5 min instead; tests can cap retries.
+      if (opts.bootstrapRetries !== undefined && attempt >= opts.bootstrapRetries) throw err;
+      const delay = Math.min(300_000, 2000 * 2 ** Math.min(attempt, 8));
+      logger.warn({ err, retryInMs: delay }, 'Judge0 not reachable yet; retrying');
+      await new Promise((r) => setTimeout(r, delay));
     }
   }
 

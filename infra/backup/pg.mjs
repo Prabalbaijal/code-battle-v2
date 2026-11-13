@@ -11,7 +11,9 @@ export const cfg = {
   user: process.env.PGUSER ?? 'cb',
 };
 
-const exec = (args) => ['compose', '-f', cfg.composeFile, 'exec', '-T', cfg.service, ...args];
+// production: COMPOSE_FILE=infra/compose.prod.yml COMPOSE_ENV_FILE=infra/prod/.env
+const envFile = process.env.COMPOSE_ENV_FILE ? ['--env-file', process.env.COMPOSE_ENV_FILE] : [];
+const exec = (args) => ['compose', '-f', cfg.composeFile, ...envFile, 'exec', '-T', cfg.service, ...args];
 
 /** Run psql and return the rows of a query (tab-separated, no header). */
 export function psql(db, sql) {

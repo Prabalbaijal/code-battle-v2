@@ -55,14 +55,31 @@ export class PresenceStore {
     );
   }
 
-  /** `presence:ping` every 25 s keeps the connection alive. */
-  async ping(userId: string): Promise<void> {
+  /**
+   * Keep live connections registered: the client's `presence:ping` (every 25 s) and the node's own
+   * heartbeat both land here. It re-writes the connection, not only its expiry: browsers throttle
+   * timers in background tabs to about once a minute, so the hash can expire while the socket is
+   * still open, and a bare PEXPIRE on a missing key would leave a connected user "offline".
+   */
+  async refresh(conns: { userId: string; connId: string }[]): Promise<void> {
+    if (!conns.length) return;
     await this.r.run(
       async (c) => {
-        await c.multi().pexpire(k.conns(userId), CONNECTION_TTL_MS).zadd(k.online, Date.now(), userId).exec();
+        const m = c.multi();
+        const now = Date.now();
+        for (const { userId, connId } of conns) {
+          m.hset(k.conns(userId), connId, this.nodeId)
+            .pexpire(k.conns(userId), CONNECTION_TTL_MS)
+            .zadd(k.online, now, userId);
+        }
+        await m.exec();
       },
       () => undefined,
     );
+  }
+
+  ping(userId: string, connId: string): Promise<void> {
+    return this.refresh([{ userId, connId }]);
   }
 
   /** Remove a connection; returns how many are left. */
