@@ -20,7 +20,10 @@ Files involved: `infra/compose.prod.yml`, `infra/prod/Caddyfile`, `scripts/gen-p
 2. **Brevo (email).** In Brevo: **Senders & IP → Senders → Add a sender** (verify the email it sends
    you), then **SMTP & API → API keys → Generate**. You'll paste the key and the sender address
    into `infra/prod/.env`.
-3. **A domain name (free).** Go to <https://www.duckdns.org>, log in with Google or GitHub, create a
+3. **Groq (AI features, free).** Sign in at <https://console.groq.com>, open **API Keys → Create API
+   Key**, and keep it for `GROQ_API_KEY` in `infra/prod/.env`. Optional: without it the site works and the
+   AI features (coach, hints, tutor) are simply hidden.
+4. **A domain name (free).** Go to <https://www.duckdns.org>, log in with Google or GitHub, create a
    subdomain (e.g. `codebattle` → `codebattle.duckdns.org`). For option A, put the VM's public IP in
    its "current ip" box and click **update ip**.
 
@@ -110,7 +113,7 @@ bash deploy/setup-vm.sh codebattle.duckdns.org
 The first run installs Docker, opens the firewall and writes `infra/prod/.env`, then stops. Fill it in:
 
 ```sh
-nano infra/prod/.env     # set JUDGE0_API_KEY, BREVO_API_KEY, EMAIL_FROM (Ctrl+O to save, Ctrl+X to exit)
+nano infra/prod/.env     # set JUDGE0_API_KEY, BREVO_API_KEY, EMAIL_FROM, GROQ_API_KEY (Ctrl+O to save, Ctrl+X to exit)
 bash deploy/setup-vm.sh codebattle.duckdns.org
 ```
 

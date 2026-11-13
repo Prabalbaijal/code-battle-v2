@@ -1869,8 +1869,8 @@ Script: `scripts/migrate-v1/` (TS). It is **idempotent** (upserts on `legacy_mon
 
 ### Phase 7: AI
 
-- [ ] ai-service skeleton, ModelGateway, budget and quotas, local embeddings, ingestion (`content/dsa`, problems, editorials).
-- [ ] Feature 1 (coach) → 2 (hints + leak guard + coin purchase) → 3 (RAG tutor) → 4 (recommendations) → 5 (generation agent) → 6 (anti-cheat flags).
+- [x] ai-service skeleton, ModelGateway, budget and quotas, local embeddings, ingestion (`content/dsa`, problems, editorials). _(Branch `phase-7/ai`. Groq instead of Claude, see the decision log; no editorials yet.)_
+- [x] Feature 1 (coach) → 2 (hints + leak guard + coin purchase) → 3 (RAG tutor) → 4 (recommendations) → 6 (anti-cheat flags). _(5, the generation agent, deferred: it spends Judge0 quota the free plan can't spare.)_
 - [ ] Eval suite + `ai_requests` dashboard.
 
 **DoD:**
@@ -1967,17 +1967,17 @@ Checked on **2026-11-08**. Re-check these before decisions that depend on them:
 
 ## 29. Progress tracker (update as you go)
 
-| Phase                                  | Status  | Notes / links                                     |
-| -------------------------------------- | ------- | ------------------------------------------------- |
-| 0 Foundation                           | ✅ Done | PR #1 merged 2026-11-10.                          |
-| 1 Identity / User / Gateway / Web auth | ✅ Done | PRs #2–#4 merged; web on `phase-1/web` (PR #5).   |
-| 2 Problems + Judge                     | ✅ Done | PRs #6–#11 merged.                                |
-| 3 Battle + Realtime                    | ✅ Done | PRs #12–#14 merged; DoD on `phase-3/finish`.      |
-| 4 Rating / Leaderboard / Notifications | ✅ Done | PRs #16–#17 merged; web + DoD on `phase-4/web`.   |
-| 5 Frontend polish                      | ✅ Done | PR #19 merged; polish on `phase-5/polish`.        |
-| 6 Hardening                            | ✅ Done | PRs #21–#23 merged; load tests on `phase-6/load`. |
-| 7 AI                                   | ⬜      |                                                   |
-| 8 Migration + Cutover                  | ⬜      |                                                   |
+| Phase                                  | Status   | Notes / links                                      |
+| -------------------------------------- | -------- | -------------------------------------------------- |
+| 0 Foundation                           | ✅ Done  | PR #1 merged 2026-11-10.                           |
+| 1 Identity / User / Gateway / Web auth | ✅ Done  | PRs #2–#4 merged; web on `phase-1/web` (PR #5).    |
+| 2 Problems + Judge                     | ✅ Done  | PRs #6–#11 merged.                                 |
+| 3 Battle + Realtime                    | ✅ Done  | PRs #12–#14 merged; DoD on `phase-3/finish`.       |
+| 4 Rating / Leaderboard / Notifications | ✅ Done  | PRs #16–#17 merged; web + DoD on `phase-4/web`.    |
+| 5 Frontend polish                      | ✅ Done  | PR #19 merged; polish on `phase-5/polish`.         |
+| 6 Hardening                            | ✅ Done  | PRs #21–#23 merged; load tests on `phase-6/load`.  |
+| 7 AI                                   | 🟡 Built | Branch `phase-7/ai`; evals + live Groq check left. |
+| 8 Migration + Cutover                  | ⬜       |                                                    |
 
 ### Resume here (Phase 1 complete, 2026-11-11)
 
@@ -2152,3 +2152,4 @@ Deferred: an identity admin endpoint to change roles (the `identity.user.role_ch
 - 2026-11-12: Phase 5 polish. Motion is CSS keyframes in `packages/ui` (no Framer Motion: ~30 KB on every page for a few transitions). Charts are hand-built SVG (no Recharts), following the data-viz rules: one series per chart, labels and legends in text colours, a table or summary for screen readers. No list virtualisation (paginated lists of ≤ 50 rows). On phones the battle room uses tabs instead of resizable panels. Visual snapshot baselines are per platform and live with the E2E suite, which runs on the dev machine.
 - 2026-11-12: New order for the remaining phases (owner's call): Phase 6 hardening → choose the host (Oracle Always Free VM or the laptop + Cloudflare Tunnel) → deploy → Phase 8 migration → Phase 7 AI last. AI is deferred because every LLM call costs money and infra stays ₹0; nothing else depends on it.
 - 2026-11-13: Phase 6 decisions. Observability is self-hosted Prometheus + Grafana (compose `obs` profile) instead of Grafana Cloud. Load tests run k6 from Docker against the dev stack until the VM exists. Recommendation for deployment: Caddy routes `/api/*` straight to the gateway (same origin; the gateway is the hardened edge), removing the Next.js proxy hop that was the busiest process under load.
+- 2026-11-13: Phase 7 decisions. **Groq free tier instead of Claude** (owner's call: ₹0): `openai/gpt-oss-20b` (coach, leak guard) and `openai/gpt-oss-120b` (hints, tutor) through Groq's OpenAI-compatible API with plain fetch, behind `ModelProvider` (Claude or any OpenAI-compatible API is one more implementation). Strict JSON-schema output for the coach and the leak guard, re-validated with zod; `reasoning_effort: low`, reasoning hidden. Daily caps in Postgres (reserve, then settle): 180K tokens and 900 requests per model (Groq free: 200K / 1K), 30K tokens per player. **Postgres is the AI task queue** (`ai_tasks`, FOR UPDATE SKIP LOCKED, idempotent keys): ai-service needs no Redis at all. **pgvector in our own Postgres** (HNSW, cosine) + full-text, fused with RRF (k = 60); embeddings from a local `Xenova/bge-small-en-v1.5` (ONNX, CPU, ~30 MB). The tutor only retrieves statements of problems the asker has already played (no spoilers) and is off during a match. Hints: generated once per (player, problem, level), a structural code check plus a model leak guard, charged in battles through rating-service's new `POST /internal/charges` (ledger reasons `hint_1`..`hint_3`, idempotent per match). Coach reviews are opt-in. Recommendations and anti-cheat (MOSS-style winnowing; flags for an admin, never penalties) use no model. judge-service gained `/internal/submissions` (code, service token only). Deferred: the generation agent (Judge0 quota) and an eval suite run against the live model.

@@ -18,7 +18,9 @@ create problem      problem_svc      "$PG_PASS_PROBLEM"
 create judge        judge_svc        "$PG_PASS_JUDGE"
 create battle       battle_svc       "$PG_PASS_BATTLE"
 create rating       rating_svc       "$PG_PASS_RATING"
+create ai           ai_svc           "$PG_PASS_AI"
 
 # extensions need a superuser: create them where they're used (same as infra/postgres/init.sql)
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname identity -c 'CREATE EXTENSION IF NOT EXISTS citext;'
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname users   -c 'CREATE EXTENSION IF NOT EXISTS citext;' -c 'CREATE EXTENSION IF NOT EXISTS pg_trgm;'
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname ai      -c 'CREATE EXTENSION IF NOT EXISTS vector;'

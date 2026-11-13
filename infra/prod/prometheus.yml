@@ -14,6 +14,7 @@ scrape_configs:
             judge:4005,
             battle:4006,
             rating:4007,
+            ai:4008,
             realtime:4010,
           ]
   - job_name: worker
@@ -27,6 +28,7 @@ scrape_configs:
             judge-worker:9405,
             battle-worker:9406,
             rating-worker:9407,
+            ai-worker:9408,
           ]
   - job_name: redpanda
     metrics_path: /public_metrics
