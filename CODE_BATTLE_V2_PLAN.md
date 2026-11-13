@@ -1857,7 +1857,7 @@ Script: `scripts/migrate-v1/` (TS). It is **idempotent** (upserts on `legacy_mon
 
 ### Phase 6: Hardening
 
-- [ ] k6 load tests (HTTP + WebSocket) on the VM against fake-judge0. Record p95s in the README.
+- [x] k6 load tests (HTTP + WebSocket) on the VM against fake-judge0. Record p95s in the README. _(6D: `load/arena.js`, run on the dev laptop at reduced scale; results in `load/README.md`. Repeat on the VM at full scale after deployment.)_
 - [x] Chaos drills 1–4 (§18.6), scripted. _(6B: Playwright specs in `apps/web/e2e/chaos/`; results in `docs/chaos-drills.md`. Drill 4 found that admission control couldn't see the worker's Judge0 breaker; fixed with a shared `judge_breakers` table.)_
 - [x] Grafana dashboards (judge, matches, sockets, Kafka lag, budgets), alerts (email). _(6C: self-hosted Prometheus + Grafana under the compose `obs` profile instead of Grafana Cloud; see `infra/observability/README.md`. Alert email needs SMTP credentials.)_
 - [ ] Backups + restore drill. Security pass (OWASP ASVS L1 checklist, dependency audit).
@@ -1967,17 +1967,17 @@ Checked on **2026-11-08**. Re-check these before decisions that depend on them:
 
 ## 29. Progress tracker (update as you go)
 
-| Phase                                  | Status  | Notes / links                                   |
-| -------------------------------------- | ------- | ----------------------------------------------- |
-| 0 Foundation                           | ✅ Done | PR #1 merged 2026-11-10.                        |
-| 1 Identity / User / Gateway / Web auth | ✅ Done | PRs #2–#4 merged; web on `phase-1/web` (PR #5). |
-| 2 Problems + Judge                     | ✅ Done | PRs #6–#11 merged.                              |
-| 3 Battle + Realtime                    | ✅ Done | PRs #12–#14 merged; DoD on `phase-3/finish`.    |
-| 4 Rating / Leaderboard / Notifications | ✅ Done | PRs #16–#17 merged; web + DoD on `phase-4/web`. |
-| 5 Frontend polish                      | ✅ Done | PR #19 merged; polish on `phase-5/polish`.      |
-| 6 Hardening                            | ⬜      |                                                 |
-| 7 AI                                   | ⬜      |                                                 |
-| 8 Migration + Cutover                  | ⬜      |                                                 |
+| Phase                                  | Status  | Notes / links                                     |
+| -------------------------------------- | ------- | ------------------------------------------------- |
+| 0 Foundation                           | ✅ Done | PR #1 merged 2026-11-10.                          |
+| 1 Identity / User / Gateway / Web auth | ✅ Done | PRs #2–#4 merged; web on `phase-1/web` (PR #5).   |
+| 2 Problems + Judge                     | ✅ Done | PRs #6–#11 merged.                                |
+| 3 Battle + Realtime                    | ✅ Done | PRs #12–#14 merged; DoD on `phase-3/finish`.      |
+| 4 Rating / Leaderboard / Notifications | ✅ Done | PRs #16–#17 merged; web + DoD on `phase-4/web`.   |
+| 5 Frontend polish                      | ✅ Done | PR #19 merged; polish on `phase-5/polish`.        |
+| 6 Hardening                            | ✅ Done | PRs #21–#23 merged; load tests on `phase-6/load`. |
+| 7 AI                                   | ⬜      |                                                   |
+| 8 Migration + Cutover                  | ⬜      |                                                   |
 
 ### Resume here (Phase 1 complete, 2026-11-11)
 
@@ -2110,6 +2110,10 @@ It found three bugs that fake-judge0 couldn't show, all fixed with regression te
 
 **Phase 6 progress (part C, branch `phase-6/metrics`, 2026-11-13):** `@cb/metrics` (prom-client): every API serves `/metrics` with `http_server_duration_seconds` per route pattern, workers serve it on `METRICS_PORT`, and the §19 metrics are in place (match start latency, matches active/finished, judge latency/verdicts/Judge0 calls/queue depth/budget/breaker, sockets, presence, consumer lag, outbox, dead letters, emails, leaderboard source). Prometheus v3.15.1 + Grafana 13.2.5 under the compose `obs` profile (localhost only), a provisioned "Code Battle" dashboard generated from `dashboard.mjs` with SLO thresholds, and six alert rules to an email contact point. Verified: all 17 scrape targets up, the dashboard renders live values, the judge counters move on a real verdict.
 
+**Phase 6 progress (part D, branch `phase-6/load`, 2026-11-13):** `load/arena.js` (k6 2.3.0 in Docker) runs browsing, held Socket.IO connections (engine.io v4 over a raw WebSocket) and real matches at once, through the web proxy with one client address per virtual user. Laptop run: 60/60 matches, match start p95 1.26 s, server-side judge p95 5.4 s, every API route ≤ 121 ms p95 server-side, 99.5 % sockets connected; client-side browse p95 602 ms because the single Next.js proxy process and the shared laptop CPU saturate (details and server recommendations in `load/README.md`).
+
+**Phase 6 DoD results:** documented results for every drill (`docs/chaos-drills.md`) and load test (`load/README.md`); the restore drill succeeds (`infra/backup/README.md`).
+
 The `battle.match.started.v1` "seen" consumer in problem-service waits for battle-service (Phase 3).
 
 Deferred: an identity admin endpoint to change roles (the `identity.user.role_changed.v1` contract exists); avatar upload UI and profile editing page; Storybook for `packages/ui` (Phase 5); E2E in CI (needs the compose stack in CI, Phase 6). Avatar uploads need `CLOUDINARY_*` env vars from the owner.
@@ -2145,3 +2149,4 @@ Deferred: an identity admin endpoint to change roles (the `identity.user.role_ch
 - 2026-11-12: Phase 5 budgets. First Load JS ≤ 175 KB on player routes (the plan's 170 assumed a smaller framework; React 19 + Next 16 are ~127 KB alone), ≤ 200 KB on admin editor routes (problem setters, desktop), ≤ 260 KB on the battle room. Web Vitals are measured in Playwright with PerformanceObservers on a throttled phone profile instead of Lighthouse CI. Pages that need data for their first paint (the profile) are server-rendered from the gateway with the visitor's cookie.
 - 2026-11-12: Phase 5 polish. Motion is CSS keyframes in `packages/ui` (no Framer Motion: ~30 KB on every page for a few transitions). Charts are hand-built SVG (no Recharts), following the data-viz rules: one series per chart, labels and legends in text colours, a table or summary for screen readers. No list virtualisation (paginated lists of ≤ 50 rows). On phones the battle room uses tabs instead of resizable panels. Visual snapshot baselines are per platform and live with the E2E suite, which runs on the dev machine.
 - 2026-11-12: New order for the remaining phases (owner's call): Phase 6 hardening → choose the host (Oracle Always Free VM or the laptop + Cloudflare Tunnel) → deploy → Phase 8 migration → Phase 7 AI last. AI is deferred because every LLM call costs money and infra stays ₹0; nothing else depends on it.
+- 2026-11-13: Phase 6 decisions. Observability is self-hosted Prometheus + Grafana (compose `obs` profile) instead of Grafana Cloud. Load tests run k6 from Docker against the dev stack until the VM exists. Recommendation for deployment: Caddy routes `/api/*` straight to the gateway (same origin; the gateway is the hardened edge), removing the Next.js proxy hop that was the busiest process under load.
