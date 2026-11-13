@@ -64,6 +64,33 @@ describe('api client', () => {
     expect(headerOf(calls[2]!, 'idempotency-key')).toBe(headerOf(calls[0]!, 'idempotency-key'));
   });
 
+  it('EMAIL_NOT_VERIFIED: refreshes once (the token may predate verification) and retries with a new key', async () => {
+    let refreshed = false;
+    const calls = transport((c) => {
+      if (c.url.endsWith('/auth/refresh')) {
+        refreshed = true;
+        return json(200, {});
+      }
+      return refreshed ? json(200, { status: 'pending' }) : err(403, 'EMAIL_NOT_VERIFIED');
+    });
+    const r = await api('/friends/requests', { method: 'POST', body: {}, idempotent: true });
+    expect(r).toEqual({ status: 'pending' });
+    expect(calls.map((c) => c.url)).toEqual([
+      '/api/v1/friends/requests',
+      '/api/v1/auth/refresh',
+      '/api/v1/friends/requests',
+    ]);
+    expect(headerOf(calls[2]!, 'idempotency-key')).not.toBe(headerOf(calls[0]!, 'idempotency-key'));
+  });
+
+  it('still not verified after the refresh: the 403 reaches the caller', async () => {
+    transport((c) => (c.url.endsWith('/auth/refresh') ? json(200, {}) : err(403, 'EMAIL_NOT_VERIFIED')));
+    await expect(api('/friends/requests', { method: 'POST', body: {} })).rejects.toMatchObject({
+      status: 403,
+      code: 'EMAIL_NOT_VERIFIED',
+    });
+  });
+
   it('single flight: concurrent 401s share one refresh', async () => {
     let refreshes = 0;
     let refreshed = false;
