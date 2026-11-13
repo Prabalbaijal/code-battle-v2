@@ -24,3 +24,6 @@ storybook-static/
 
 # Database backups (infra/backup)
 backups/
+
+# k6 output
+load/results/
