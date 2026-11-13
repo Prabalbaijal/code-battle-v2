@@ -2114,6 +2114,8 @@ It found three bugs that fake-judge0 couldn't show, all fixed with regression te
 
 **Phase 6 DoD results:** documented results for every drill (`docs/chaos-drills.md`) and load test (`load/README.md`); the restore drill succeeds (`infra/backup/README.md`).
 
+**Deployment kit (branch `deploy/kit`, 2026-11-13):** `DEPLOY.md` is the step-by-step guide (Oracle VM, or the laptop with a Cloudflare Tunnel). `infra/compose.prod.yml` runs every service, Postgres (one role and database per service, strong passwords from `infra/prod/postgres-init.sh`), Redis (password, AOF), Redpanda (production mode, auto-created topics) and Caddy (automatic HTTPS; `/api/*` straight to the gateway, `/socket.io/*` to realtime, the rest to the web app) on a private network; only Caddy publishes ports. APIs run their migrations before starting; workers wait for their API to be healthy. `scripts/gen-prod-env.mjs` writes `infra/prod/.env` (random passwords, internal secret, a fresh JWT key). `deploy/setup-vm.sh` sets up a fresh Ubuntu VM (swap, Docker, firewall, build, start, nightly backup cron). `deploy/oci-retry.ps1` keeps asking Oracle for the free ARM VM. The web app ships as a Next.js standalone image (`infra/docker/web.Dockerfile`). Judge0 budget in production: 50 requests/day (RapidAPI free plan), match reserve 10.
+
 The `battle.match.started.v1` "seen" consumer in problem-service waits for battle-service (Phase 3).
 
 Deferred: an identity admin endpoint to change roles (the `identity.user.role_changed.v1` contract exists); avatar upload UI and profile editing page; Storybook for `packages/ui` (Phase 5); E2E in CI (needs the compose stack in CI, Phase 6). Avatar uploads need `CLOUDINARY_*` env vars from the owner.

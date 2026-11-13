@@ -38,6 +38,8 @@ const securityHeaders = [
 ];
 
 const config: NextConfig = {
+  // Docker builds ship a self-contained server (infra/docker/web.Dockerfile); `next start` stays for dev
+  ...(process.env.NEXT_STANDALONE === '1' ? { output: 'standalone' as const } : {}),
   reactStrictMode: true,
   poweredByHeader: false,
   transpilePackages: ['@cb/ui'],

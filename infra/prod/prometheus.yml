@@ -1,0 +1,34 @@
+# Production scrape config: same targets as infra/observability/prometheus.yml, by service name.
+global:
+  scrape_interval: 15s
+scrape_configs:
+  - job_name: api
+    static_configs:
+      - targets:
+          [
+            gateway:8080,
+            identity:4001,
+            user:4002,
+            notification:4003,
+            problem:4004,
+            judge:4005,
+            battle:4006,
+            rating:4007,
+            realtime:4010,
+          ]
+  - job_name: worker
+    static_configs:
+      - targets:
+          [
+            identity-worker:9401,
+            user-worker:9402,
+            notification-worker:9403,
+            problem-worker:9404,
+            judge-worker:9405,
+            battle-worker:9406,
+            rating-worker:9407,
+          ]
+  - job_name: redpanda
+    metrics_path: /public_metrics
+    static_configs:
+      - targets: [redpanda:9644]

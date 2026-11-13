@@ -1,0 +1,38 @@
+# One site, one origin (plan §21.3). SITE_ADDRESS is the domain on a VM (automatic HTTPS from
+# Let's Encrypt), or ":80" behind a Cloudflare Tunnel (Cloudflare terminates TLS).
+{
+	servers {
+		# behind a Cloudflare Tunnel the request comes from the cloudflared container: take the real
+		# client address from its X-Forwarded-For (only private-network senders are trusted)
+		trusted_proxies static private_ranges
+	}
+}
+
+{$SITE_ADDRESS} {
+	encode zstd gzip
+
+	# API: straight to the gateway (the hardened edge: auth, CSRF/Origin checks, rate limits).
+	# Skipping the Next.js proxy hop was the main load-test recommendation (load/README.md).
+	handle /api/* {
+		reverse_proxy gateway:8080
+	}
+
+	# Socket.IO on the same origin, so no CORS and the cookies stay first-party
+	handle /socket.io/* {
+		reverse_proxy realtime:4010
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}
