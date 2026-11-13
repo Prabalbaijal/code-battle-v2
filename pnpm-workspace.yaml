@@ -12,3 +12,6 @@ onlyBuiltDependencies:
   - protobufjs
   - ssh2
   - msgpackr-extract
+# onnxruntime-node ships its CPU binaries in the package; its install script only fetches GPU extras.
+ignoredBuiltDependencies:
+  - onnxruntime-node
