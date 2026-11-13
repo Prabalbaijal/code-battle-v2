@@ -1,5 +1,5 @@
 import { MIN_INTERNAL_SECRET_LENGTH } from '@cb/auth';
-import { baseEnvSchema, envBool, envList, loadEnv } from '@cb/env';
+import { baseEnvSchema, envBool, envList, loadEnv, envOptional } from '@cb/env';
 import { z } from 'zod';
 
 export const envSchema = baseEnvSchema
@@ -18,9 +18,9 @@ export const envSchema = baseEnvSchema
     INTERNAL_SERVICE_SECRET: z.string().min(MIN_INTERNAL_SECRET_LENGTH).optional(),
     CSRF_REQUIRED: envBool(true),
     /** Signed direct avatar uploads. Without these, avatar upload is disabled (initials avatar). */
-    CLOUDINARY_CLOUD_NAME: z.string().min(1).optional(),
-    CLOUDINARY_API_KEY: z.string().min(1).optional(),
-    CLOUDINARY_API_SECRET: z.string().min(1).optional(),
+    CLOUDINARY_CLOUD_NAME: envOptional,
+    CLOUDINARY_API_KEY: envOptional,
+    CLOUDINARY_API_SECRET: envOptional,
     CLOUDINARY_FOLDER: z
       .string()
       .regex(/^[a-z0-9_-]+(\/[a-z0-9_-]+)*$/)

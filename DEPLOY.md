@@ -26,6 +26,32 @@ Files involved: `infra/compose.prod.yml`, `infra/prod/Caddyfile`, `scripts/gen-p
 
 ---
 
+## Try it on your laptop first (optional)
+
+The production setup runs on your laptop as well (Docker Desktop), at **https://localhost**:
+
+```powershell
+# stop the dev stack first (same ports and RAM), then in the repo folder:
+node scripts/gen-prod-env.mjs --domain localhost
+notepad infraprod.env      # fill JUDGE0_API_KEY, BREVO_API_KEY, EMAIL_FROM
+docker compose -f infra/compose.prod.yml --env-file infra/prod/.env up -d --build
+```
+
+The browser warns about the certificate (Caddy made a local one): **Advanced → Proceed**. It is
+real production mode: verification emails go out through Brevo and submissions use your Judge0
+allowance. When you're done:
+
+```powershell
+docker compose -f infra/compose.prod.yml --env-file infra/prod/.env down -v   # -v: delete this test's data
+Remove-Item infraprod.env
+```
+
+The database passwords are set **once**, when the database is first created. Never regenerate
+`infra/prod/.env` (`--force`) while its database volume still exists: the services couldn't log in.
+Delete the volume first (`down -v`, which also deletes the data), or keep the old file.
+
+---
+
 ## Option A: Oracle Always Free VM
 
 ### A1. Get the server

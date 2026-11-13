@@ -15,6 +15,12 @@ export const envBool = (def: boolean) =>
     .optional()
     .transform((v) => (v === undefined || v === '' ? def : ['true', '1', 'yes'].includes(v.toLowerCase())));
 
+/**
+ * An optional setting where empty means unset: compose files pass `FOO: ${FOO:-}` as "", which must
+ * not fail a `.min(1)` check meant for real values.
+ */
+export const envOptional = z.preprocess((v) => (v === '' ? undefined : v), z.string().min(1).optional());
+
 /** Comma-separated list → string[]. */
 export const envList = z.string().transform((v) =>
   v
