@@ -183,8 +183,8 @@ export async function buildGateway(d: GatewayDeps): Promise<HttpServer> {
       preHandler,
       undici: {
         connections: 64,
-        headersTimeout: env.UPSTREAM_TIMEOUT_MS,
-        bodyTimeout: env.UPSTREAM_TIMEOUT_MS,
+        headersTimeout: rule.timeoutMs ?? env.UPSTREAM_TIMEOUT_MS,
+        bodyTimeout: rule.timeoutMs ?? env.UPSTREAM_TIMEOUT_MS,
       },
       replyOptions: {
         rewriteRequestHeaders: (req, headers) =>

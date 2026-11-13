@@ -12,12 +12,14 @@ import type { Env } from './config/env.js';
 export type Access = 'public' | 'optional' | 'user' | 'verified' | Role;
 
 export type ServiceName =
-  'identity' | 'user' | 'problem' | 'judge' | 'battle' | 'rating' | 'notification' | 'realtime';
+  'identity' | 'user' | 'problem' | 'judge' | 'battle' | 'rating' | 'notification' | 'realtime' | 'ai';
 
 export interface RouteRule {
   prefix: string;
   service: ServiceName;
   access: Access;
+  /** Longer than UPSTREAM_TIMEOUT_MS for slow routes (model calls, streamed answers). */
+  timeoutMs?: number;
 }
 
 /**
@@ -43,6 +45,9 @@ export const ROUTES: RouteRule[] = [
   { prefix: '/api/v1/notifications', service: 'notification', access: 'user' },
   // lobby lists and online dots; the socket itself goes straight to realtime (Caddy in production)
   { prefix: '/api/v1/presence', service: 'realtime', access: 'user' },
+  // AI (plan §22): status and notes are public; ai-service checks the token and a verified email per route
+  { prefix: '/api/v1/ai', service: 'ai', access: 'optional', timeoutMs: 60_000 },
+  { prefix: '/api/v1/admin/ai', service: 'ai', access: 'admin' },
   // Judge0 callbacks: no user token; each URL carries an HMAC signature checked by judge-service
   { prefix: '/api/v1/hooks/judge0', service: 'judge', access: 'public' },
 ];
@@ -56,6 +61,7 @@ export const serviceUrls = (env: Env): Record<ServiceName, string> => ({
   rating: env.SERVICE_URL_RATING,
   notification: env.SERVICE_URL_NOTIFICATION,
   realtime: env.SERVICE_URL_REALTIME,
+  ai: env.SERVICE_URL_AI,
 });
 
 /** Headers only the gateway may set. Anything a client sends with these names is dropped. */
