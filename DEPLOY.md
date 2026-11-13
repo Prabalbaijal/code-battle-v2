@@ -61,15 +61,18 @@ In the Oracle console, create an instance: image **Ubuntu 24.04**, shape **VM.St
 
 If it says **"Out of capacity"** (common in Mumbai), let your laptop retry for you:
 
-1. Install the OCI CLI (PowerShell):
-   `powershell -NoProfile -ExecutionPolicy Bypass -Command "iex ((New-Object System.Net.WebClient).DownloadString('https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.ps1'))"`
+1. Install the OCI CLI with Python 3.12 (Oracle's own installer tends to hang on Windows; 3.14 is
+   too new for its dependencies), in PowerShell:
+   `py -3.12 -m venv $HOME\oci-cli; & $HOME\oci-cli\Scripts\python.exe -m pip install oci-cli`
+   Then use it as `& $HOME\oci-cli\Scripts\oci.exe` (the retry script finds it by itself).
+   SSH key for the server: `ssh-keygen -t ed25519 -f $HOME\.ssh\id_ed25519_oracle`.
 2. `oci setup config` (user OCID and tenancy OCID from the console: profile icon → My profile /
    Tenancy; region `ap-mumbai-1`; let it generate an API key), then in the console **My profile →
    API keys → Add API key** and paste `C:\Users\<you>\.oci\oci_api_key_public.pem`.
 3. Make sure a network exists: **Networking → Virtual cloud networks** (if empty: **Start VCN
    Wizard → Create VCN with Internet Connectivity**).
 4. Run, from the repo folder:
-   `powershell -ExecutionPolicy Bypass -File deploy\oci-retry.ps1 -SshPublicKey C:\path\to\ssh-key.pub`
+   `powershell -ExecutionPolicy Bypass -File deploy\oci-retry.ps1 -SshPublicKey $HOME\.ssh\id_ed25519_oracle.pub`
    Leave it running (laptop plugged in). It prints the public IP when it succeeds.
 
 ### A2. Open ports 80 and 443 in Oracle
