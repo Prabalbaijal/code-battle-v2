@@ -3,14 +3,21 @@
 #   powershell -ExecutionPolicy Bypass -File scripts\dev-stack.ps1 start     # infra + every service + web
 #   powershell -ExecutionPolicy Bypass -File scripts\dev-stack.ps1 status    # what's up
 #   powershell -ExecutionPolicy Bypass -File scripts\dev-stack.ps1 stop      # stop the Node processes
-#   options for start: -ShortMatch (60 s matches) -NoBuild (skip `pnpm build`)
+#   options for start: -ShortMatch (60 s matches) -NoBuild (skip `pnpm build`) -Fake
 #
-# Uses fake-judge0 (no Judge0 quota) and the fake email inbox (no real emails). Logs go to .dev-logs\.
+# Default: REAL services, exactly as configured in the apps' .env files: hosted Judge0 on RapidAPI
+# (apps/judge-service/.env) and real emails through Brevo (apps/notification-service/.env). The judge
+# is held to the RapidAPI free plan (50 requests a day, 10 kept for matches) so tests can't overspend.
+# -Fake: fake-judge0 and the fake email inbox instead (no quota, no emails; what the E2E and load
+# tests expect). Logs go to .dev-logs\.
 # Needs: Docker Desktop running, `pnpm install` done once, and each app's .env (copy .env.example).
 param(
   [Parameter(Position = 0)][ValidateSet('start', 'stop', 'status', 'restart')][string]$Action = 'status',
   [switch]$ShortMatch,
-  [switch]$NoBuild
+  [switch]$NoBuild,
+  [switch]$Fake,
+  [int]$JudgeDailyBudget = 50,
+  [int]$MatchReserveCalls = 10
 )
 $ErrorActionPreference = 'Continue'
 $repo = Split-Path $PSScriptRoot -Parent
@@ -71,9 +78,23 @@ function Start-Stack {
       -RedirectStandardOutput "$logs\$name.out.log" -RedirectStandardError "$logs\$name.err.log" | Out-Null
     foreach ($k in $envs.Keys) { Remove-Item "env:$k" }
   }
-  # Fake judge and fake email always win over whatever the .env files say.
-  $judge = @{ JUDGE0_URL = 'http://localhost:2358'; JUDGE0_AUTH = 'none' }
-  $mail = @{ EMAIL_PROVIDER = 'fake' }
+  if ($Fake) {
+    Write-Host '    mode: FAKE judge (fake-judge0) and FAKE email inbox'
+    $judge = @{ JUDGE0_URL = 'http://localhost:2358'; JUDGE0_AUTH = 'none' }
+    $mail = @{ EMAIL_PROVIDER = 'fake' }
+  } else {
+    $judgeEnv = Get-Content "$apps\judge-service\.env" -Raw
+    $mailEnv = Get-Content "$apps\notification-service\.env" -Raw
+    if ($judgeEnv -match '(?m)^JUDGE0_URL=\s*http://localhost' -or $judgeEnv -notmatch '(?m)^JUDGE0_API_KEY=\S') {
+      throw 'Real judge: set JUDGE0_URL=https://judge0-ce.p.rapidapi.com, JUDGE0_AUTH=rapidapi and JUDGE0_API_KEY in apps\judge-service\.env (or use -Fake)'
+    }
+    if ($mailEnv -notmatch '(?m)^EMAIL_PROVIDER=brevo' -or $mailEnv -notmatch '(?m)^BREVO_API_KEY=\S' -or $mailEnv -notmatch '(?m)^EMAIL_FROM=\S') {
+      throw 'Real email: set EMAIL_PROVIDER=brevo, BREVO_API_KEY and EMAIL_FROM in apps\notification-service\.env (or use -Fake)'
+    }
+    Write-Host "    mode: REAL Judge0 (budget $JudgeDailyBudget requests/day, $MatchReserveCalls kept for matches) and REAL email (Brevo)"
+    $judge = @{ JUDGE0_DAILY_BUDGET = "$JudgeDailyBudget"; MATCH_RESERVE_CALLS = "$MatchReserveCalls" }
+    $mail = @{}
+  }
   $battle = if ($ShortMatch) { @{ MATCH_DURATION_SECONDS = '60' } } else { @{} }
 
   Write-Host '==> services'
