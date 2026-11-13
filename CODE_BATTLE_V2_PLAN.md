@@ -1967,17 +1967,17 @@ Checked on **2026-11-08**. Re-check these before decisions that depend on them:
 
 ## 29. Progress tracker (update as you go)
 
-| Phase                                  | Status   | Notes / links                                      |
-| -------------------------------------- | -------- | -------------------------------------------------- |
-| 0 Foundation                           | ✅ Done  | PR #1 merged 2026-11-10.                           |
-| 1 Identity / User / Gateway / Web auth | ✅ Done  | PRs #2–#4 merged; web on `phase-1/web` (PR #5).    |
-| 2 Problems + Judge                     | ✅ Done  | PRs #6–#11 merged.                                 |
-| 3 Battle + Realtime                    | ✅ Done  | PRs #12–#14 merged; DoD on `phase-3/finish`.       |
-| 4 Rating / Leaderboard / Notifications | ✅ Done  | PRs #16–#17 merged; web + DoD on `phase-4/web`.    |
-| 5 Frontend polish                      | ✅ Done  | PR #19 merged; polish on `phase-5/polish`.         |
-| 6 Hardening                            | ✅ Done  | PRs #21–#23 merged; load tests on `phase-6/load`.  |
-| 7 AI                                   | 🟡 Built | Branch `phase-7/ai`; evals + live Groq check left. |
-| 8 Migration + Cutover                  | ⬜       |                                                    |
+| Phase                                  | Status  | Notes / links                                                                          |
+| -------------------------------------- | ------- | -------------------------------------------------------------------------------------- |
+| 0 Foundation                           | ✅ Done | PR #1 merged 2026-11-10.                                                               |
+| 1 Identity / User / Gateway / Web auth | ✅ Done | PRs #2–#4 merged; web on `phase-1/web` (PR #5).                                        |
+| 2 Problems + Judge                     | ✅ Done | PRs #6–#11 merged.                                                                     |
+| 3 Battle + Realtime                    | ✅ Done | PRs #12–#14 merged; DoD on `phase-3/finish`.                                           |
+| 4 Rating / Leaderboard / Notifications | ✅ Done | PRs #16–#17 merged; web + DoD on `phase-4/web`.                                        |
+| 5 Frontend polish                      | ✅ Done | PR #19 merged; polish on `phase-5/polish`.                                             |
+| 6 Hardening                            | ✅ Done | PRs #21–#23 merged; load tests on `phase-6/load`.                                      |
+| 7 AI                                   | ✅ Done | Branch `phase-7/ai`; live on Groq 2026-11-13. Evals and the generation agent deferred. |
+| 8 Migration + Cutover                  | ⬜      |                                                                                        |
 
 ### Resume here (Phase 1 complete, 2026-11-11)
 
