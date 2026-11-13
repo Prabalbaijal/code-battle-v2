@@ -42,8 +42,8 @@ const estimate = (spec: CallSpec) =>
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * Every model call goes through here (plan §22.3): budget reservation, one retry on a short 429 or
- * a 5xx, fallback from the strong model to the fast one, schema validation of JSON answers, and an
+ * Every model call goes through here (plan §22.3): budget reservation, one retry on a short 429, a 5xx
+ * or a failed JSON generation, fallback from the strong model to the fast one, schema validation of JSON answers, and an
  * `ai_requests` row + metrics per call. Callers never see provider errors, only AppErrors.
  */
 export class ModelGateway {
@@ -153,7 +153,10 @@ export class ModelGateway {
           const pe = err instanceof ProviderError ? err : undefined;
           this.d.logger.warn({ err, feature: spec.feature, model, attempt }, 'model call failed');
           const shortWait = pe?.rateLimited && (pe.retryAfterSec ?? 99) <= 10;
-          if (attempt === 1 && pe && (shortWait || pe.status >= 500 || pe.status === 0)) {
+          // Groq answers 400 json_validate_failed when the sampled JSON didn't fit the schema: worth a retry
+          const badJson =
+            pe?.status === 400 && /json_validate_failed|failed to generate json/i.test(pe.message);
+          if (attempt === 1 && pe && (shortWait || badJson || pe.status >= 500 || pe.status === 0)) {
             await sleep(shortWait ? (pe.retryAfterSec ?? 1) * 1000 + 200 : 1000);
             continue;
           }
