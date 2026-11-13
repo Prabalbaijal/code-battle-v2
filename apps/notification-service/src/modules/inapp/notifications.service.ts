@@ -125,9 +125,12 @@ export class NotificationService {
     }
   }
 
-  /** The real coin change lands on the same match notification (either event may come first). */
+  /**
+   * The real coin change lands on the same match notification (either event may come first). Hints
+   * bought during the match carry its id too, but they aren't its result: the hints panel shows them.
+   */
   async onStatsChanged(tx: Tx, e: EventData<typeof ratingEvents.statsChangedV1>): Promise<void> {
-    if (!e.matchId) return;
+    if (!e.matchId || e.reason.startsWith('hint_')) return;
     await this.merge(tx, e.userId, `match:${e.matchId}`, { matchId: e.matchId, coinDelta: e.delta });
   }
 

@@ -200,7 +200,7 @@ describe('in-app notifications', () => {
   it('match result + coin change merge into one notification, whichever event comes first', async () => {
     const [a, b] = [await person(), await person()];
     const matchId = newId();
-    const stats = (userId: string, delta: number, reason: string) =>
+    const stats = (userId: string, delta: number, reason: string, inMatch = matchId) =>
       envelope('rating.stats.changed.v1', userId, {
         userId,
         coins: 400 + delta,
@@ -212,7 +212,7 @@ describe('in-app notifications', () => {
         bestStreak: 0,
         delta,
         reason,
-        matchId,
+        matchId: inMatch,
         hidden: false,
         updatedAt: new Date().toISOString(),
       });
@@ -256,6 +256,19 @@ describe('in-app notifications', () => {
     expect(nb.payload).toMatchObject({ result: 'loss', coinDelta: -50, opponent: { id: a.id } });
     expect(await rowsOf(a.id)).toHaveLength(1);
     expect(await rowsOf(b.id)).toHaveLength(1);
+
+    // a hint bought in that match is a coin change too, but not the match's result
+    await send(TOPICS.rating, a.id, stats(a.id, -10, 'hint_1'));
+    // same partition, so once this second match shows up the hint charge was handled
+    await send(TOPICS.rating, a.id, stats(a.id, 50, 'match_win', newId()));
+    await waitFor(async () => (await rowsOf(a.id)).length === 2 || undefined, {
+      what: 'a marker',
+      timeoutMs: 30_000,
+    });
+    const first = (await list(a.token)).find(
+      (n) => n.type === 'match_result' && n.payload.matchId === matchId,
+    );
+    expect(first?.payload).toMatchObject({ result: 'win', coinDelta: 50 });
   });
 
   it('read one, read all, pagination, and nobody reads anyone else’s', async () => {
