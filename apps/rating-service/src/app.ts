@@ -11,6 +11,11 @@ export async function buildApp(infra: Infra): Promise<HttpServer> {
     critical: ['db'],
     openapi: { title: 'rating-service', version: '1.0.0' },
   });
-  registerRatingRoutes(app, { stats: infra.stats, leaderboard: infra.leaderboard, auth: infra.authHooks });
+  registerRatingRoutes(app, {
+    stats: infra.stats,
+    leaderboard: infra.leaderboard,
+    auth: infra.authHooks,
+    internalAuth: infra.internalAuth,
+  });
   return app;
 }

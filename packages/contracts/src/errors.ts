@@ -50,6 +50,11 @@ export const ERROR_CODES = [
   // ai
   'AI_DISABLED',
   'AI_BUDGET_EXHAUSTED',
+  'AI_QUOTA_EXHAUSTED',
+  'AI_UNAVAILABLE',
+  'AI_NOT_ALLOWED',
+  // coins
+  'INSUFFICIENT_COINS',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

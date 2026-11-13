@@ -1,5 +1,7 @@
 import { authUser, type AuthHooks } from '@cb/auth';
 import {
+  coinChargeRequestSchema,
+  coinChargeResultSchema,
   cursorQuerySchema,
   leaderboardSchema,
   ledgerPageSchema,
@@ -7,6 +9,7 @@ import {
   playerStatsSchema,
 } from '@cb/contracts';
 import type { HttpServer } from '@cb/http-server';
+import type { FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { LeaderboardService } from './leaderboard.service.js';
 import type { StatsService } from './stats.service.js';
@@ -15,6 +18,7 @@ export interface RatingRouteDeps {
   stats: StatsService;
   leaderboard: LeaderboardService;
   auth: AuthHooks;
+  internalAuth: (req: FastifyRequest) => Promise<void>;
 }
 
 export function registerRatingRoutes(app: HttpServer, d: RatingRouteDeps): void {
@@ -69,5 +73,16 @@ export function registerRatingRoutes(app: HttpServer, d: RatingRouteDeps): void 
     '/api/v1/stats/:userId',
     { schema: { params: z.object({ userId: z.uuid() }), response: { 200: playerStatsSchema } } },
     async (req) => d.stats.get(req.params.userId),
+  );
+
+  // ---- internal (service token; never routed by the gateway) ----
+  // ai-service charges for hints in a battle (plan §22.2)
+  app.post(
+    '/internal/charges',
+    {
+      schema: { body: coinChargeRequestSchema, response: { 200: coinChargeResultSchema } },
+      preHandler: [d.internalAuth],
+    },
+    async (req) => d.stats.charge(req.body),
   );
 }

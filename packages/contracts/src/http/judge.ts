@@ -61,6 +61,21 @@ export const submissionSchema = z.object({
 });
 export type SubmissionView = z.infer<typeof submissionSchema>;
 
+/**
+ * Internal (service token) view with the source code, for ai-service: the post-match coach, the
+ * tutor's "why WA?" and anti-cheat fingerprints (plan §22). Never routed by the gateway.
+ */
+export const internalSubmissionSchema = submissionSchema.extend({ userId: z.uuid(), code: z.string() });
+export type InternalSubmission = z.infer<typeof internalSubmissionSchema>;
+export const internalSubmissionQuerySchema = z
+  .object({
+    matchId: z.uuid().optional(),
+    problemId: z.uuid().optional(),
+    verdict: verdictSchema.optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(50),
+  })
+  .refine((q) => q.matchId || q.problemId, 'matchId or problemId is required');
+
 export const languageInfoSchema = z.object({
   key: languageKeySchema,
   name: z.string(),
