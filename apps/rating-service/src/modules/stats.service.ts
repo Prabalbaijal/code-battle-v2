@@ -2,11 +2,14 @@ import {
   type battleEvents,
   ratingEvents,
   type identityEvents,
+  type CoinChargeRequest,
+  type CoinChargeResult,
   type EventData,
   type LedgerEntry,
   type PlayerStats,
 } from '@cb/contracts';
-import type { Db, Executor, Tx } from '@cb/db';
+import { withTransaction, type Db, type Executor, type Tx } from '@cb/db';
+import { conflict } from '@cb/errors';
 import type { OutboxWriter } from '@cb/events';
 import { newId } from '@cb/ids';
 import type { Logger } from '@cb/logger';
@@ -126,6 +129,57 @@ export class StatsService {
         .returning();
       await this.emit(tx, updated!, { delta: applied, reason, matchId: e.matchId });
     }
+  }
+
+  /**
+   * Spend coins (an AI hint in a battle, plan §22.2). One ledger row per (match, user, reason), so a
+   * retried request is a no-op that reports the current balance. Unlike match results, a charge is
+   * refused rather than floored when the player can't afford it.
+   */
+  async charge(c: CoinChargeRequest): Promise<CoinChargeResult> {
+    return withTransaction(this.d.db, async (tx) => {
+      await this.ensure(tx, c.userId);
+      const [row] = await tx.select().from(playerStats).where(eq(playerStats.userId, c.userId)).for('update');
+      const [done] = await tx
+        .select({ id: coinLedger.id })
+        .from(coinLedger)
+        .where(
+          and(
+            eq(coinLedger.matchId, c.matchId),
+            eq(coinLedger.userId, c.userId),
+            eq(coinLedger.reason, c.reason),
+          ),
+        );
+      if (done) return { charged: false, coins: row!.coins };
+      if (row!.coins < c.amount) {
+        throw conflict('INSUFFICIENT_COINS', `Needs ${c.amount} coins; you have ${row!.coins}`, {
+          coins: row!.coins,
+          amount: c.amount,
+        });
+      }
+      const balance = row!.coins - c.amount;
+      await tx.insert(coinLedger).values({
+        id: newId(),
+        userId: c.userId,
+        matchId: c.matchId,
+        reason: c.reason,
+        delta: -c.amount,
+        applied: -c.amount,
+        balanceAfter: balance,
+      });
+      const [updated] = await tx
+        .update(playerStats)
+        .set({
+          coins: balance,
+          level: levelFor(balance),
+          version: sql`${playerStats.version} + 1`,
+          updatedAt: sql`now()`,
+        })
+        .where(eq(playerStats.userId, c.userId))
+        .returning();
+      await this.emit(tx, updated!, { delta: -c.amount, reason: c.reason, matchId: c.matchId });
+      return { charged: true, coins: balance };
+    });
   }
 
   async get(userId: string): Promise<PlayerStats> {

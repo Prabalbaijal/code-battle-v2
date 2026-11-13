@@ -29,6 +29,10 @@ apps' `.env` files: code is judged by hosted **Judge0 on RapidAPI** and emails g
 4. In `apps/notification-service/.env`: `EMAIL_PROVIDER=brevo`, `BREVO_API_KEY=<your key>`,
    `EMAIL_FROM=<a sender verified in Brevo>`.
 
+5. AI (optional): in `apps/ai-service/.env`, `GROQ_API_KEY=<your key>` from
+   <https://console.groq.com/keys> (free). Without it the coach, hints and tutor stay hidden. The first
+   start downloads a small embedding model (~30 MB) for the tutor's search.
+
 Keys go only into these files (they're gitignored). Never paste them anywhere else.
 
 ```powershell

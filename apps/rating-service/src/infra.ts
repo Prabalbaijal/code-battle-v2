@@ -1,9 +1,10 @@
-import { createAuthHooks, JwtVerifier, type AuthHooks } from '@cb/auth';
+import { createAuthHooks, createInternalAuth, JwtVerifier, type AuthHooks } from '@cb/auth';
 import { TOPICS } from '@cb/contracts';
 import { createDb, type DbHandle } from '@cb/db';
 import { createKafka, createOutboxWriter, createProducer, OutboxRelay, type OutboxWriter } from '@cb/events';
 import type { Logger } from '@cb/logger';
 import { createRedis, SafeRedis, type Redis } from '@cb/redis';
+import type { FastifyRequest } from 'fastify';
 import type { Kafka, Producer } from 'kafkajs';
 import { randomUUID } from 'node:crypto';
 import { HttpUserDirectory, type UserDirectory } from './clients.js';
@@ -28,6 +29,7 @@ export interface Infra {
   outbox: OutboxWriter;
   relay: OutboxRelay;
   authHooks: AuthHooks;
+  internalAuth: (req: FastifyRequest) => Promise<void>;
   stats: StatsService;
   leaderboard: LeaderboardService;
   close(): Promise<void>;
@@ -90,6 +92,7 @@ export async function createInfra(env: Env, logger: Logger, opts: InfraOptions =
     outbox,
     relay,
     authHooks: createAuthHooks(verifier, { csrf: env.CSRF_REQUIRED }),
+    internalAuth: createInternalAuth(env.INTERNAL_SERVICE_SECRET),
     stats,
     leaderboard,
     async close() {

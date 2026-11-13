@@ -14,9 +14,15 @@ const NAV = [
   { href: '/friends', label: 'Friends' },
 ];
 /** Public: signed-out visitors can browse the leaderboard. */
-const PUBLIC_NAV = [{ href: '/leaderboard', label: 'Leaderboard' }];
+const PUBLIC_NAV = [
+  { href: '/leaderboard', label: 'Leaderboard' },
+  { href: '/learn', label: 'Learn' },
+];
 const AUTHOR_NAV = [{ href: '/admin/problems', label: 'Problems' }];
-const ADMIN_NAV = [{ href: '/admin/judge', label: 'Judge' }];
+const ADMIN_NAV = [
+  { href: '/admin/judge', label: 'Judge' },
+  { href: '/admin/ai', label: 'AI' },
+];
 
 export function SiteHeader() {
   const { data: me, isPending } = useMe();

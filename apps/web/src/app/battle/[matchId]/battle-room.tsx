@@ -19,6 +19,15 @@ import { loadDraft, loadLanguage, saveDraft, saveLanguage } from '@/lib/drafts';
 import { useRealtimeEvent, useRealtimeStatus } from '@/lib/realtime';
 import { useMe, useRequireAuth } from '@/lib/session';
 
+// AI pieces (plan §22) load on demand: they're not part of the battle room's first load.
+const HintsPanel = dynamic(() => import('@/components/ai-hints').then((m) => m.HintsPanel), {
+  ssr: false,
+  loading: () => <Skeleton className="h-16 w-full" />,
+});
+const CoachReview = dynamic(() => import('@/components/ai-coach').then((m) => m.CoachReview), {
+  ssr: false,
+});
+
 // The editor is the heaviest piece; it loads on the battle page only, client-side.
 const CodeEditor = dynamic(() => import('@/components/code-editor').then((m) => m.CodeEditor), {
   ssr: false,
@@ -472,7 +481,7 @@ function Workspace({
   const [lang, setLang] = useState<LanguageKey>('cpp');
   const [code, setCode] = useState<Record<string, string>>({});
   const [ready, setReady] = useState(false);
-  const [tab, setTab] = useState<'result' | 'custom' | 'history' | 'opponent'>('result');
+  const [tab, setTab] = useState<'result' | 'custom' | 'history' | 'opponent' | 'hints'>('result');
   const [customInput, setCustomInput] = useState('');
   const [lastId, setLastId] = useState<string | null>(null);
   const submit = useSubmit();
@@ -617,6 +626,7 @@ function Workspace({
                 ['custom', 'Custom input'],
                 ['history', `My submissions (${state.mySubmissions.length})`],
                 ['opponent', 'Opponent'],
+                ['hints', 'Hints'],
               ] as const
             ).map(([k, label]) => (
               <button
@@ -685,6 +695,14 @@ function Workspace({
                   <li className="text-muted-foreground">No submissions yet.</li>
                 )}
               </ul>
+            )}
+            {tab === 'hints' && problem && (
+              <HintsPanel
+                problemId={problem.id}
+                matchId={state.status === 'in_progress' || state.status === 'deciding' ? matchId : null}
+                code={code[lang] ?? ''}
+                language={lang}
+              />
             )}
             {tab === 'opponent' && (
               <ul className="grid gap-1" aria-live="polite">
@@ -816,6 +834,7 @@ function CoinChange({ matchId }: { matchId: string }) {
 
 function EndScreen({ state: s, meId }: { state: MatchState; meId: string }) {
   const won = s.winnerId === meId;
+  const lastFailed = [...s.mySubmissions].reverse().find((m) => m.verdict && m.verdict !== 'AC');
   const title =
     s.status === 'aborted' ? 'Match aborted' : s.winnerId === null ? 'Draw' : won ? 'You won!' : 'You lost';
   const reason =
@@ -836,6 +855,12 @@ function EndScreen({ state: s, meId }: { state: MatchState; meId: string }) {
       <h2 className="text-2xl font-bold">{title}</h2>
       <p className="text-muted-foreground">{reason}</p>
       {s.status === 'completed' && <CoinChange matchId={s.matchId} />}
+      {s.status === 'completed' && (
+        <CoachReview
+          matchId={s.matchId}
+          {...(lastFailed ? { failedSubmissionId: lastFailed.submissionId } : {})}
+        />
+      )}
       <div className="flex justify-center gap-2">
         <Button asChild>
           <Link href="/lobby">Back to the lobby</Link>

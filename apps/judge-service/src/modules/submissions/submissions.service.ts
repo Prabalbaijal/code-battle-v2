@@ -3,6 +3,7 @@ import {
   judgeEvents,
   type Capacity,
   type CreateSubmissionBody,
+  type InternalSubmission,
   type JudgeSpec,
   type JudgeStatus,
   type SubmissionView,
@@ -14,9 +15,10 @@ import { newId } from '@cb/ids';
 import { degradationLevel, isAtLeast } from '@cb/judge-core';
 import type { RateLimiter } from '@cb/rate-limit';
 import { addJobToOutbox } from '@cb/queue';
+import { and, desc, eq } from 'drizzle-orm';
 import { createHash } from 'node:crypto';
 import type { MatchParticipation } from '../../battle/participation.js';
-import type { JudgeRunRow, SubmissionRow } from '../../db/schema.js';
+import { submissions, type JudgeRunRow, type SubmissionRow } from '../../db/schema.js';
 import type { CodeExecutor } from '../../judge0/executor.js';
 import type { ProblemSource } from '../../problems/problem-source.js';
 import { QUEUES } from '../../queues.js';
@@ -304,6 +306,39 @@ export class SubmissionService {
 
   async list(user: AuthUser, filter: { problemId?: string; matchId?: string }): Promise<SubmissionView[]> {
     return (await repo.listForUser(this.d.db, user.userId, filter, 20)).map((s) => toView(s));
+  }
+
+  // ---- internal (ai-service; service token) ----
+
+  /** One submission with its code. Calibration runs (problem setters' reference code) stay private. */
+  async internalGet(id: string): Promise<InternalSubmission> {
+    const s = await repo.findSubmission(this.d.db, id);
+    if (!s || s.mode === 'calibrate') throw notFound('Submission');
+    return { ...toView(s), userId: s.userId, code: s.code };
+  }
+
+  /** Judged Submits (not Runs) of a match or a problem, newest first. */
+  async internalList(q: {
+    matchId?: string | undefined;
+    problemId?: string | undefined;
+    verdict?: SubmissionView['verdict'] | undefined;
+    limit: number;
+  }): Promise<InternalSubmission[]> {
+    const rows = await this.d.db
+      .select()
+      .from(submissions)
+      .where(
+        and(
+          eq(submissions.mode, 'submit'),
+          eq(submissions.status, 'done'),
+          q.matchId ? eq(submissions.matchId, q.matchId) : undefined,
+          q.problemId ? eq(submissions.problemId, q.problemId) : undefined,
+          q.verdict ? eq(submissions.verdict, q.verdict) : undefined,
+        ),
+      )
+      .orderBy(desc(submissions.submittedAt))
+      .limit(q.limit);
+    return rows.map((s) => ({ ...toView(s), userId: s.userId, code: s.code }));
   }
 
   async languages() {

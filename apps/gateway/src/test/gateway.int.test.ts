@@ -93,6 +93,7 @@ async function gateway(overrides: Record<string, string> = {}): Promise<HttpServ
     SERVICE_URL_RATING: urlOf(users),
     SERVICE_URL_NOTIFICATION: urlOf(users),
     SERVICE_URL_REALTIME: urlOf(users),
+    SERVICE_URL_AI: urlOf(users),
     ...overrides,
   });
   const app = await buildGateway({
@@ -433,6 +434,7 @@ describe('rate limits and failures', () => {
         rating: 'ok',
         notification: 'ok',
         realtime: 'ok',
+        ai: 'ok',
       },
     ]);
     expect((await gw.inject({ method: 'GET', url: '/health/upstreams' })).statusCode).toBe(200);

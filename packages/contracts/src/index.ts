@@ -9,6 +9,7 @@ export * as ratingEvents from './events/rating.js';
 export * as templateEvents from './events/template.js';
 export * as userEvents from './events/user.js';
 export * from './http/auth.js';
+export * from './http/ai.js';
 export * from './http/battle.js';
 export * from './http/common.js';
 export * from './http/judge.js';

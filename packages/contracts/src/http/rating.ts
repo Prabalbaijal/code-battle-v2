@@ -26,6 +26,25 @@ export const leaderboardEntrySchema = z.object({
 });
 export type LeaderboardEntry = z.infer<typeof leaderboardEntrySchema>;
 
+/**
+ * POST /internal/charges (rating-service, service token): spend coins, e.g. an AI hint in a battle
+ * (plan §22.2). Idempotent per (matchId, userId, reason) through the ledger's unique key, so a retry
+ * never charges twice. Refused with 409 INSUFFICIENT_COINS instead of flooring at 0.
+ */
+export const coinChargeRequestSchema = z.object({
+  userId: z.uuid(),
+  matchId: z.uuid(),
+  reason: z.string().regex(/^[a-z0-9_]{3,40}$/),
+  amount: z.number().int().positive().max(1000),
+});
+export type CoinChargeRequest = z.infer<typeof coinChargeRequestSchema>;
+export const coinChargeResultSchema = z.object({
+  /** false: this exact charge had already been made (a replay), nothing new was taken. */
+  charged: z.boolean(),
+  coins: z.number(),
+});
+export type CoinChargeResult = z.infer<typeof coinChargeResultSchema>;
+
 export const myRankSchema = z.object({ rank: z.number().nullable(), coins: z.number(), level: z.number() });
 export type MyRank = z.infer<typeof myRankSchema>;
 

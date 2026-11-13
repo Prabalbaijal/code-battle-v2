@@ -4,6 +4,8 @@ import {
   calibrationResultSchema,
   capacitySchema,
   createSubmissionBodySchema,
+  internalSubmissionQuerySchema,
+  internalSubmissionSchema,
   judgeStatusSchema,
   languageInfoSchema,
   submissionSchema,
@@ -117,6 +119,27 @@ export function registerSubmissionRoutes(app: HttpServer, d: SubmissionRouteDeps
     '/internal/capacity',
     { schema: { response: { 200: capacitySchema } }, preHandler: [d.internalAuth] },
     async () => s.capacity(),
+  );
+
+  // ai-service: code for the coach, the tutor and anti-cheat (plan §22)
+  app.get(
+    '/internal/submissions/:id',
+    {
+      schema: { params: z.object({ id: z.uuid() }), response: { 200: internalSubmissionSchema } },
+      preHandler: [d.internalAuth],
+    },
+    async (req) => s.internalGet(req.params.id),
+  );
+  app.get(
+    '/internal/submissions',
+    {
+      schema: {
+        querystring: internalSubmissionQuerySchema,
+        response: { 200: z.object({ items: z.array(internalSubmissionSchema) }) },
+      },
+      preHandler: [d.internalAuth],
+    },
+    async (req) => ({ items: await s.internalList(req.query) }),
   );
 
   // problem-service calibration runs (plan §14.7)

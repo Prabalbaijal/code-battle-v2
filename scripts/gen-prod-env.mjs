@@ -45,7 +45,7 @@ const lines = [
   '',
   '# ---- generated (do not change after the first start: the databases use these)',
   `POSTGRES_PASSWORD=${secret()}`,
-  ...['IDENTITY', 'USERS', 'NOTIFICATION', 'PROBLEM', 'JUDGE', 'BATTLE', 'RATING'].map(
+  ...['IDENTITY', 'USERS', 'NOTIFICATION', 'PROBLEM', 'JUDGE', 'BATTLE', 'RATING', 'AI'].map(
     (s) => `PG_PASS_${s}=${secret()}`,
   ),
   `REDIS_PASSWORD=${secret()}`,
@@ -64,6 +64,9 @@ const lines = [
   'BREVO_API_KEY=FILL_ME_brevo_api_key',
   'EMAIL_FROM=FILL_ME_verified_sender@example.com',
   'EMAIL_FROM_NAME=Code Battle',
+  '',
+  '# ---- AI: Groq free tier (https://console.groq.com/keys). Empty = AI features off, the rest works.',
+  'GROQ_API_KEY=',
   '',
   '# ---- optional',
   '# Cloudflare Tunnel (laptop hosting, DEPLOY.md option B)',

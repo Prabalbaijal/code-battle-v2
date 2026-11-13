@@ -44,7 +44,7 @@ function Stop-Stack {
 
 function Show-Status {
   $procs = @(Get-StackProcesses)
-  Write-Host "node processes: $($procs.Count) of 17"
+  Write-Host "node processes: $($procs.Count) of 19"
   foreach ($u in 'http://localhost:8080/health/upstreams', 'http://localhost:3000/login', 'http://localhost:2358/config_info') {
     $ok = Test-Url $u
     Write-Host ("  {0,-45} {1}" -f $u, $(if ($ok) { 'OK' } else { 'down' }))
@@ -56,7 +56,7 @@ function Start-Stack {
   docker info *> $null
   if ($LASTEXITCODE -ne 0) { throw 'Docker is not running: start Docker Desktop first' }
   foreach ($app in 'identity-service', 'user-service', 'notification-service', 'problem-service', 'judge-service',
-    'battle-service', 'rating-service', 'realtime-service', 'gateway') {
+    'battle-service', 'rating-service', 'realtime-service', 'ai-service', 'gateway') {
     if (-not (Test-Path "$apps\$app\.env")) { throw "apps\$app\.env is missing: copy apps\$app\.env.example to .env" }
   }
 
@@ -71,6 +71,16 @@ function Start-Stack {
   Pop-Location
 
   New-Item -ItemType Directory -Force $logs | Out-Null
+
+  Write-Host '==> database migrations (each service, idempotent)'
+  foreach ($dir in Get-ChildItem $apps -Directory) {
+    if (-not (Test-Path "$($dir.FullName)\dist\db\migrate.js") -or -not (Test-Path "$($dir.FullName)\.env")) { continue }
+    Push-Location $dir.FullName
+    node --env-file-if-exists=.env dist/db/migrate.js *> "$logs\migrate-$($dir.Name).log"
+    if ($LASTEXITCODE -ne 0) { Pop-Location; throw "migration failed for $($dir.Name): see $logs\migrate-$($dir.Name).log" }
+    Pop-Location
+  }
+
   function Start-Svc($app, $entry, $name, $envs = @{}) {
     foreach ($k in $envs.Keys) { Set-Item "env:$k" $envs[$k] }
     Start-Process -FilePath 'node' -ArgumentList '--env-file-if-exists=.env', '--import', './dist/instrument.js', $entry `
@@ -79,10 +89,16 @@ function Start-Stack {
     foreach ($k in $envs.Keys) { Remove-Item "env:$k" }
   }
   if ($Fake) {
-    Write-Host '    mode: FAKE judge (fake-judge0) and FAKE email inbox'
+    Write-Host '    mode: FAKE judge (fake-judge0), FAKE email inbox and FAKE AI answers'
     $judge = @{ JUDGE0_URL = 'http://localhost:2358'; JUDGE0_AUTH = 'none' }
     $mail = @{ EMAIL_PROVIDER = 'fake' }
+    $ai = @{ AI_PROVIDER = 'fake'; EMBEDDINGS = 'hash' }
   } else {
+    $aiEnv = if (Test-Path "$apps\ai-service\.env") { Get-Content "$apps\ai-service\.env" -Raw } else { '' }
+    if ($aiEnv -notmatch '(?m)^GROQ_API_KEY=\S') {
+      Write-Host '    note: no GROQ_API_KEY in apps\ai-service\.env, so the AI features stay off' -ForegroundColor Yellow
+    }
+    $ai = @{}
     $judgeEnv = Get-Content "$apps\judge-service\.env" -Raw
     $mailEnv = Get-Content "$apps\notification-service\.env" -Raw
     if ($judgeEnv -match '(?m)^JUDGE0_URL=\s*http://localhost' -or $judgeEnv -notmatch '(?m)^JUDGE0_API_KEY=\S') {
@@ -113,6 +129,8 @@ function Start-Stack {
   Start-Svc rating-service dist/index.js rating
   Start-Svc rating-service dist/worker.js rating-worker
   Start-Svc realtime-service dist/index.js realtime
+  Start-Svc ai-service dist/index.js ai $ai
+  Start-Svc ai-service dist/worker.js ai-worker $ai
   Start-Svc gateway dist/index.js gateway
   Start-Process -FilePath 'node' -ArgumentList 'node_modules/next/dist/bin/next', 'start', '--port', '3000' `
     -WorkingDirectory "$apps\web" -WindowStyle Hidden `

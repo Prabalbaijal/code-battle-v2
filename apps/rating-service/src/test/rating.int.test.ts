@@ -1,4 +1,4 @@
-import { generateSigningKey, JwtVerifier, TokenSigner } from '@cb/auth';
+import { generateSigningKey, JwtVerifier, signInternalToken, TokenSigner } from '@cb/auth';
 import { TOPICS, type EventEnvelope, type Leaderboard, type Player } from '@cb/contracts';
 import { createProducer, outbox } from '@cb/events';
 import type { HttpServer } from '@cb/http-server';
@@ -139,6 +139,47 @@ const zsetCoins = async (id: string) => {
 // ---------------- tests ----------------
 
 describe('rating-service', () => {
+  it('coin charges (AI hints): once per (match, reason) under retries and races, refused when unaffordable', async () => {
+    const p = await register();
+    const matchId = newId();
+    const svc = await signInternalToken('rating-test-internal-secret-0123456789ab', 'ai-service');
+    const charge = (reason: string, amount: number) =>
+      app.inject({
+        method: 'POST',
+        url: '/internal/charges',
+        headers: { authorization: `Bearer ${svc}` },
+        payload: { userId: p.id, matchId, reason, amount },
+      });
+
+    // five concurrent copies of the same request (double click + retries): one charge
+    const first = await Promise.all(Array.from({ length: 5 }, () => charge('hint_1', 10)));
+    expect(first.map((r) => r.statusCode)).toEqual([200, 200, 200, 200, 200]);
+    expect(first.filter((r) => r.json().charged)).toHaveLength(1);
+    expect((await stats(p.id))!.coins).toBe(390);
+    // a different hint level is a different charge
+    expect((await charge('hint_2', 20)).json()).toEqual({ charged: true, coins: 370 });
+    // more than the balance: refused, nothing taken
+    const tooMuch = await charge('hint_3', 1000);
+    expect(tooMuch.statusCode).toBe(409);
+    expect(tooMuch.json().error.code).toBe('INSUFFICIENT_COINS');
+    expect((await stats(p.id))!.coins).toBe(370);
+    const rows = await infra.db.db
+      .select()
+      .from(coinLedger)
+      .where(and(eq(coinLedger.userId, p.id), eq(coinLedger.matchId, matchId)));
+    expect(rows.map((r) => [r.reason, r.applied, r.balanceAfter]).sort()).toEqual([
+      ['hint_1', -10, 390],
+      ['hint_2', -20, 370],
+    ]);
+    // internal only: no service token, no charge
+    const anon = await app.inject({
+      method: 'POST',
+      url: '/internal/charges',
+      payload: { userId: p.id, matchId, reason: 'hint_9', amount: 1 },
+    });
+    expect(anon.statusCode).toBe(401);
+  });
+
   it('a new player starts with 400 coins and a signup ledger row, and appears on the leaderboard', async () => {
     const p = await register();
     expect(await stats(p.id)).toMatchObject({ coins: 400, level: 1, wins: 0, isAdmin: false });

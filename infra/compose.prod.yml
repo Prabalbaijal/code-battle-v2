@@ -72,6 +72,7 @@ services:
       PG_PASS_JUDGE: ${PG_PASS_JUDGE}
       PG_PASS_BATTLE: ${PG_PASS_BATTLE}
       PG_PASS_RATING: ${PG_PASS_RATING}
+      PG_PASS_AI: ${PG_PASS_AI}
     command: ['postgres', '-c', 'max_connections=200', '-c', 'shared_buffers=256MB']
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -316,6 +317,35 @@ services:
       METRICS_PORT: '9407'
     depends_on: { rating: { condition: service_healthy } }
 
+  # AI (plan §22): Groq free tier; without GROQ_API_KEY the model features stay off and the rest works.
+  ai:
+    <<: *node
+    image: cb/ai:prod
+    build: { context: .., dockerfile: infra/docker/node-app.Dockerfile, args: { APP: '@cb/ai-service' } }
+    command: *migrate-and-run
+    # the local embedding model (ONNX) lives outside the JS heap
+    mem_limit: 768m
+    environment: &ai-env
+      <<: *common-env
+      PORT: '4008'
+      DATABASE_URL: postgres://ai_svc:${PG_PASS_AI}@postgres:5432/ai
+      JUDGE_SERVICE_URL: http://judge:4005
+      PROBLEM_SERVICE_URL: http://problem:4004
+      RATING_SERVICE_URL: http://rating:4007
+      AI_PROVIDER: groq
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+    depends_on: *data
+    healthcheck: *http-health
+  ai-worker:
+    <<: *node
+    image: cb/ai:prod
+    command: *worker-cmd
+    mem_limit: 768m
+    environment:
+      <<: *ai-env
+      METRICS_PORT: '9408'
+    depends_on: { ai: { condition: service_healthy } }
+
   realtime:
     <<: *node
     image: cb/realtime:prod
@@ -352,6 +382,7 @@ services:
       SERVICE_URL_RATING: http://rating:4007
       SERVICE_URL_NOTIFICATION: http://notification:4003
       SERVICE_URL_REALTIME: http://realtime:4010
+      SERVICE_URL_AI: http://ai:4008
     depends_on:
       identity: { condition: service_healthy }
       redis: { condition: service_healthy }

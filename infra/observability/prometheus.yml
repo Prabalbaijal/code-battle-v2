@@ -17,6 +17,7 @@ scrape_configs:
           - host.docker.internal:4005 # judge
           - host.docker.internal:4006 # battle
           - host.docker.internal:4007 # rating
+          - host.docker.internal:4008 # ai
           - host.docker.internal:4010 # realtime
   - job_name: worker
     metrics_path: /metrics
@@ -29,6 +30,7 @@ scrape_configs:
           - host.docker.internal:9405 # judge
           - host.docker.internal:9406 # battle
           - host.docker.internal:9407 # rating
+          - host.docker.internal:9408 # ai
   - job_name: redpanda
     metrics_path: /public_metrics
     static_configs:
