@@ -5,7 +5,7 @@ Real-time 1v1 competitive coding: challenge an online player, both get the same 
 v2 is a TypeScript rewrite of [Code Battle v1](https://github.com/Prabalbaijal/Code_Battle) as an event-driven microservice system in a Turborepo monorepo.
 
 - **Architecture, decisions and roadmap:** [CODE_BATTLE_V2_PLAN.md](./CODE_BATTLE_V2_PLAN.md) (single source of truth)
-- **Deploying:** [DEPLOY.md](./DEPLOY.md) · **Interview guide:** [docs/INTERVIEW_GUIDE.md](./docs/INTERVIEW_GUIDE.md)
+- **Deploying:** [DEPLOY.md](./DEPLOY.md)
 - **Status:** Phases 0–6 done (core game, rating, notifications, polish, hardening). Next: deploy, v1 data migration, AI.
 
 ## Requirements
