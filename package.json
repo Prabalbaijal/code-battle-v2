@@ -22,7 +22,10 @@
     "new-service": "node scripts/new-service.mjs",
     "gen-keys": "node scripts/gen-keys.mjs",
     "db:backup": "node infra/backup/backup.mjs",
-    "db:restore-drill": "node infra/backup/restore.mjs"
+    "db:restore-drill": "node infra/backup/restore.mjs",
+    "azure:up": "powershell -NoProfile -ExecutionPolicy Bypass -File deploy/azure.ps1 up",
+    "azure:down": "powershell -NoProfile -ExecutionPolicy Bypass -File deploy/azure.ps1 down",
+    "azure:status": "powershell -NoProfile -ExecutionPolicy Bypass -File deploy/azure.ps1 status"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",

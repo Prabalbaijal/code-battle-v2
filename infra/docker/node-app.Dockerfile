@@ -24,7 +24,7 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store pnpm install --frozen-lo
 COPY --from=pruner /repo/out/full/ ./
 # turbo prune does not copy root config files that packages extend
 COPY --from=pruner /repo/tsconfig.base.json ./
-RUN pnpm turbo run build --filter="${APP}..."
+RUN pnpm turbo run build --concurrency=2 --filter="${APP}..."
 RUN pnpm --filter="${APP}" deploy --prod --legacy /out
 
 # 3. Small runtime image, non-root.

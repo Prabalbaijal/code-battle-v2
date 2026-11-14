@@ -20,7 +20,7 @@ COPY --from=pruner /repo/out/full/ ./
 COPY --from=pruner /repo/tsconfig.base.json ./
 # production build: no dev-only REALTIME_ORIGIN, so the CSP allows connections to this origin only
 ENV NEXT_STANDALONE=1 NODE_ENV=production
-RUN pnpm turbo run build --filter=@cb/web...
+RUN pnpm turbo run build --concurrency=2 --filter=@cb/web...
 
 FROM node:${NODE_VERSION}-slim AS runner
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0
