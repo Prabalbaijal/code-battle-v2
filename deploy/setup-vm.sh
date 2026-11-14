@@ -61,7 +61,7 @@ fi
 chmod 600 infra/prod/.env
 
 step "5/6 Build and start (the first build takes 15–30 minutes)"
-COMPOSE=("$DOCKER" compose -f infra/compose.prod.yml --env-file infra/prod/.env)
+COMPOSE=(sudo docker compose -f infra/compose.prod.yml --env-file infra/prod/.env)
 COMPOSE_PARALLEL_LIMIT=2 "${COMPOSE[@]}" build
 "${COMPOSE[@]}" up -d
 echo "Waiting for the site to become healthy…"
