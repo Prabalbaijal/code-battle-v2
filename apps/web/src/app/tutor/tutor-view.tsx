@@ -37,7 +37,10 @@ export function TutorView() {
   const abort = useRef<AbortController | null>(null);
   const end = useRef<HTMLDivElement>(null);
 
-  useEffect(() => end.current?.scrollIntoView({ block: 'end' }), [turns]);
+  // braces: newer browsers return a Promise from scrollIntoView, which React would call as a cleanup
+  useEffect(() => {
+    end.current?.scrollIntoView({ block: 'end' });
+  }, [turns]);
   useEffect(() => () => abort.current?.abort(), []);
 
   if (me.isPending || me.data === null || status.isPending) return <Skeleton className="h-64 w-full" />;

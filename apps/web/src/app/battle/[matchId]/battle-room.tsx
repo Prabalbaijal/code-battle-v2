@@ -834,7 +834,10 @@ function CoinChange({ matchId }: { matchId: string }) {
 
 function EndScreen({ state: s, meId }: { state: MatchState; meId: string }) {
   const won = s.winnerId === meId;
-  const lastFailed = [...s.mySubmissions].reverse().find((m) => m.verdict && m.verdict !== 'AC');
+  // "why did it fail" only makes sense when the match ended on a failure: not for a winner who had a
+  // wrong attempt before their AC
+  const lastJudged = [...s.mySubmissions].reverse().find((m) => m.verdict);
+  const lastFailed = !won && lastJudged && lastJudged.verdict !== 'AC' ? lastJudged : undefined;
   const title =
     s.status === 'aborted' ? 'Match aborted' : s.winnerId === null ? 'Draw' : won ? 'You won!' : 'You lost';
   const reason =

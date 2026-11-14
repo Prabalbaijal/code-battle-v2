@@ -161,7 +161,7 @@ export class HintService {
           tier: 'strong',
           userId,
           promptVersion: hint.version,
-          maxTokens: 500,
+          maxTokens: 900,
           temperature: attempt === 1 ? 0.4 : 0.2,
           messages: [
             {
@@ -194,7 +194,8 @@ export class HintService {
           tier: 'fast',
           userId,
           promptVersion: guard.version,
-          maxTokens: 200,
+          // gpt-oss spends part of this on reasoning; too tight and the JSON gets cut off
+          maxTokens: 800,
           temperature: 0,
           messages: [
             { role: 'system', content: guard.system },

@@ -5,7 +5,8 @@
 #   options: -Ocpus 1 -MemoryGb 6 (default; smallest fits gaps best, resize later) -IntervalSec 90
 #
 # Safe: it only ever launches VM.Standard.A1.Flex (Always Free), and the quota policy in your account
-# blocks anything paid anyway. Stops by itself on success or on any error other than "out of capacity".
+# blocks anything paid anyway. Retries on "out of capacity", rate limits, 5xx and network drops;
+# stops by itself on success or on any other error.
 param(
   [Parameter(Mandatory = $true)][string]$SshPublicKey,
   [int]$Ocpus = 1,
@@ -92,6 +93,26 @@ while ($true) {
     # other temporary server-side errors: keep trying, but say what they were
     Write-Host "[$stamp] try ${try}: Oracle error $status ($msg), retrying in about $IntervalSec s"
     Start-Sleep ($IntervalSec + (Get-Random -Maximum 30))
+    continue
+  }
+  if (-not $status -and $out -match 'timed out|RequestException|ConnectionError|Max retries exceeded|NewConnectionError|NameResolution|getaddrinfo|Connection (reset|aborted|refused)') {
+    # our side: Wi-Fi dropped, the laptop slept, DNS hiccup. The launch may still have gone through, so
+    # look for the instance before asking again.
+    Write-Host "[$stamp] try ${try}: network problem ($msg), checking again in 2 minutes"
+    Start-Sleep 120
+    $list = oci compute instance list --compartment-id $tenancy --display-name $Name 2>$null | Out-String
+    $made = $null
+    if ($list.Trim()) {
+      try {
+        $made = (($list | ConvertFrom-Json).data |
+          Where-Object { $_.'lifecycle-state' -in 'PROVISIONING', 'STARTING', 'RUNNING' } |
+          Select-Object -First 1).id
+      } catch { $made = $null }
+    }
+    if ($made) {
+      Write-Host "An instance named '$Name' exists after all ($made). Find its public IP in the Oracle console." -ForegroundColor Green
+      break
+    }
     continue
   }
   Write-Host "[$stamp] Stopped on an unexpected error (not capacity):" -ForegroundColor Red

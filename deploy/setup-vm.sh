@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One-time setup of a fresh Ubuntu 24.04 server (Oracle Always Free ARM VM) for Code Battle.
+# One-time setup of a fresh Ubuntu 24.04 server (Oracle Always Free ARM VM or Azure x86 VM) for Code Battle.
 # Run from the repository folder on the server:   bash deploy/setup-vm.sh <your-domain>
 # Safe to run again. See DEPLOY.md for the whole procedure.
 set -euo pipefail
@@ -28,15 +28,22 @@ if ! command -v docker >/dev/null; then
 fi
 DOCKER="sudo docker"
 
-step "3/6 Firewall: Oracle's Ubuntu image blocks everything but SSH in iptables; open 80 and 443"
-for port in 80 443; do
-  if ! sudo iptables -C INPUT -p tcp --dport "$port" -m state --state NEW -j ACCEPT 2>/dev/null; then
-    sudo iptables -I INPUT 5 -p tcp --dport "$port" -m state --state NEW -j ACCEPT
-  fi
-done
-sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q iptables-persistent >/dev/null
-sudo netfilter-persistent save >/dev/null
-echo "Also open 80 and 443 in the Oracle console (VCN → Security list → ingress rules), see DEPLOY.md."
+step "3/6 Firewall: open 80 and 443 if the host itself blocks them"
+# Oracle's Ubuntu image ends INPUT with a REJECT rule (only SSH gets through); Azure's has none, its
+# firewall is the network security group. Insert before that REJECT, and only when there is one.
+reject_at="$(sudo iptables -L INPUT --line-numbers -n | awk '$2 == "REJECT" { print $1; exit }')"
+if [[ -n "$reject_at" ]]; then
+  for port in 80 443; do
+    if ! sudo iptables -C INPUT -p tcp --dport "$port" -m state --state NEW -j ACCEPT 2>/dev/null; then
+      sudo iptables -I INPUT "$reject_at" -p tcp --dport "$port" -m state --state NEW -j ACCEPT
+    fi
+  done
+  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q iptables-persistent >/dev/null
+  sudo netfilter-persistent save >/dev/null
+  echo "Also open 80 and 443 in your cloud's firewall (Oracle: VCN → Security list), see DEPLOY.md."
+else
+  echo "No host firewall rule blocks them; open 80 and 443 in your cloud's firewall (Azure: NSG), see DEPLOY.md."
+fi
 
 step "4/6 Secrets (infra/prod/.env)"
 if [[ ! -f infra/prod/.env ]]; then
