@@ -62,7 +62,12 @@ chmod 600 infra/prod/.env
 
 step "5/6 Build and start (the first build takes 15–30 minutes)"
 COMPOSE=(sudo docker compose -f infra/compose.prod.yml --env-file infra/prod/.env)
-COMPOSE_PARALLEL_LIMIT=2 "${COMPOSE[@]}" build
+# One image at a time: a plain `compose build` hands every image to BuildKit at once (13 pnpm installs
+# and TypeScript builds together), which swamps an 8 GB server. The pnpm store is a shared cache mount,
+# so later images reuse what the first one downloaded. `build` is a no-op for image-only services.
+for svc in $("${COMPOSE[@]}" config --services); do
+  "${COMPOSE[@]}" build "$svc"
+done
 "${COMPOSE[@]}" up -d
 echo "Waiting for the site to become healthy…"
 for _ in $(seq 1 60); do
